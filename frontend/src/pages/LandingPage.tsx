@@ -232,16 +232,6 @@ function AnimatedNav() {
           {navLinks.map((l) => (
             <NavLink key={l.href} href={l.href} label={l.label} />
           ))}
-          <a
-            href={REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group relative inline-flex items-center gap-1.5 py-1 transition-colors hover:text-foreground"
-          >
-            <Code2 className="size-4" />
-            GitHub
-            <span className="absolute inset-x-0 -bottom-0.5 h-px origin-left scale-x-0 bg-mint transition-transform duration-300 ease-out group-hover:scale-x-100" />
-          </a>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -284,15 +274,6 @@ function AnimatedNav() {
                   {l.label}
                 </a>
               ))}
-              <a
-                href={REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-2.5 transition-colors hover:bg-mint/10 hover:text-foreground"
-              >
-                <Code2 className="size-4" />
-                GitHub
-              </a>
               <Link
                 to="/login"
                 className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-mint to-mint-deep px-5 py-2.5 font-display text-sm font-semibold text-ink shadow-sm"
@@ -909,15 +890,6 @@ export default function LandingPage() {
                 className="underline decoration-transparent transition-colors hover:text-foreground hover:decoration-current"
               >
                 DPA
-              </a>
-              <a
-                href={REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 underline decoration-transparent transition-colors hover:text-foreground hover:decoration-current"
-              >
-                <Code2 className="size-3.5" />
-                Source
               </a>
             </div>
           </div>
