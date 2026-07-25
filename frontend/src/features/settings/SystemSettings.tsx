@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, X, Plus, Building2, Users, MapPin, ShieldAlert, CheckCircle2, AlertTriangle, Database, Trash2 } from 'lucide-react'
+import { Loader2, X, Plus, Building2, Users, MapPin, ShieldAlert, CheckCircle2, AlertTriangle, Database, Trash2, Languages } from 'lucide-react'
 import { getClient } from '@/api/client'
 import { upsertSetting, type ApiSetting } from '@/api/settings'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 import { AVAILABLE_COLLECTIONS, seedCollections, eraseCollections } from './demoData'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { toast as showToast } from '@/lib/toast'
+import { useTranslation } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { PasskeySettings } from './PasskeySettings'
 
 interface TagInputProps {
@@ -117,6 +119,7 @@ interface Toast {
 }
 
 export default function SystemSettings() {
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [settingIds, setSettingIds] = useState<Record<string, string>>({})
@@ -489,6 +492,21 @@ export default function SystemSettings() {
                 ))}
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="rounded-lg border bg-card shadow-sm motion-fade-in motion-slide-up">
+          <div className="flex items-center gap-2 border-b border-bamboo/40 px-4 py-2.5 dark:border-bamboo/20">
+            <Languages className="size-4 text-muted-foreground/60" />
+            <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+              {t('settings.language.title')}
+            </h2>
+          </div>
+          <div className="p-3">
+            <p className="mb-2.5 text-[11px] text-muted-foreground/60">
+              {t('settings.language.description')}
+            </p>
+            <LanguageSwitcher />
           </div>
         </section>
 

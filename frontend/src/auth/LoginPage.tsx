@@ -7,22 +7,25 @@ import { getClient } from '@/api/client'
 import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, isDemoModeEnabled, type DemoAccount } from '@/lib/demoAccounts'
 import { ensureDemoSeeded } from '@/lib/demoSeed'
 import { browserSupportsWebAuthn, loginWithPasskey } from '@/lib/webauthn'
+import { useTranslation } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
-function getGreeting(): string {
+function getGreetingKey(): 'login.greeting.morning' | 'login.greeting.afternoon' | 'login.greeting.evening' {
   const hour = new Date().getHours()
-  if (hour < 12) return 'Magandang Umaga'
-  if (hour < 18) return 'Magandang Hapon'
-  return 'Magandang Gabi'
+  if (hour < 12) return 'login.greeting.morning'
+  if (hour < 18) return 'login.greeting.afternoon'
+  return 'login.greeting.evening'
 }
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [greeting] = useState(getGreeting)
+  const [greetingKey] = useState(getGreetingKey)
 
   // Second-factor step — only entered for admin accounts (see
   // 1785000029_admin_mfa.js). mfaId identifies the in-progress login;
@@ -163,7 +166,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       {/* ── Left: Illustration panel ── */}
-      <div className="relative flex min-h-[40vh] items-center justify-center overflow-hidden bg-gradient-to-br from-barangay via-[#152F3D] to-[#0D1F2D] lg:min-h-screen lg:w-1/2">
+      <div className="relative flex min-h-[40vh] items-center justify-center overflow-hidden bg-gradient-to-br from-barangay via-[#0A2A22] to-[#06110D] lg:min-h-screen lg:w-1/2">
         {/* Subtle radial glow */}
         <div
           className="pointer-events-none absolute inset-0 z-10 opacity-40"
@@ -194,7 +197,8 @@ export default function LoginPage() {
       </div>
 
       {/* ── Right: Form panel ── */}
-      <div className="flex flex-1 items-center justify-center bg-white px-5 py-10 lg:w-1/2">
+      <div className="relative flex flex-1 items-center justify-center bg-white px-5 py-10 lg:w-1/2">
+        <LanguageSwitcher className="absolute right-5 top-5" />
         <div className="w-full max-w-sm motion-fade-in motion-slide-up">
           {/* Branding */}
           <div className="text-center">
@@ -203,10 +207,10 @@ export default function LoginPage() {
               <span className="font-display text-2xl font-bold tracking-tight text-gray-900">CLUSTR</span>
             </div>
             <p className="mt-4 font-display text-sm font-semibold uppercase tracking-[0.2em] text-narra">
-              {greeting}
+              {t(greetingKey)}
             </p>
             <p className="mt-1 font-display text-sm text-gray-500">
-              Barangay Operating System
+              {t('login.tagline')}
             </p>
           </div>
 
@@ -242,7 +246,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#0D1F2D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#0D1F2D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#06110D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#06110D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2 font-display">
@@ -272,7 +276,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="Email address"
+                    placeholder={t('login.emailPlaceholder')}
                     autoComplete="email"
                     className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
                   />
@@ -289,7 +293,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    placeholder="Password"
+                    placeholder={t('login.passwordPlaceholder')}
                     autoComplete="current-password"
                     className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
                   />
@@ -316,15 +320,15 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#0D1F2D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#0D1F2D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#06110D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#06110D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2 font-display">
                       <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Signing in...
+                      {t('login.signingIn')}
                     </span>
                   ) : (
-                    'Login'
+                    t('login.signIn')
                   )}
                 </button>
 
@@ -347,7 +351,7 @@ export default function LoginPage() {
                       ) : (
                         <KeyRound className="size-4" />
                       )}
-                      Sign in with a passkey
+                      {t('login.signInWithPasskey')}
                     </button>
                   </>
                 )}

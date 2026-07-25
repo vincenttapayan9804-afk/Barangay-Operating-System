@@ -69,7 +69,7 @@ function StatCardSkeleton() {
   )
 }
 
-function BarChart({ items, total, color = '#D4A854' }: {
+function BarChart({ items, total, color = '#00B389' }: {
   items: { label: string; count: number }[]
   total: number
   color?: string
@@ -118,7 +118,7 @@ function SectionCard({ title, children, className }: {
   className?: string
 }) {
   return (
-    <Card variant="accent-top" accentColor="#D4A854" className={cn('motion-fade-in motion-slide-up', className)}>
+    <Card variant="accent-top" accentColor="#00D9A3" className={cn('motion-fade-in motion-slide-up', className)}>
       <CardHeader>
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
       </CardHeader>

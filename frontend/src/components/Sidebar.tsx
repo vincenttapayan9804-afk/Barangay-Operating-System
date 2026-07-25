@@ -27,79 +27,81 @@ import {
 } from 'lucide-react'
 import { getCurrentUser, logout, type Role } from '@/auth/session'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useTheme } from '@/lib/theme'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
   to: string
-  label: string
+  labelKey: TranslationKey
   icon: React.ComponentType<{ className?: string }>
   roles: Role[]
   platformAdminOnly?: boolean
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
+const navGroups: { labelKey: TranslationKey; items: NavItem[] }[] = [
   {
-    label: 'Overview',
+    labelKey: 'nav.group.overview',
     items: [
-      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'viewer'] },
-      { to: '/logs/visitors', label: 'Visitor Log', icon: DoorOpen, roles: ['admin', 'staff'] },
-      { to: '/reports', label: 'Reports Dashboard', icon: BarChart3, roles: ['admin', 'staff'] },
+      { to: '/dashboard', labelKey: 'nav.item.dashboard', icon: LayoutDashboard, roles: ['admin', 'staff', 'viewer'] },
+      { to: '/logs/visitors', labelKey: 'nav.item.visitorLog', icon: DoorOpen, roles: ['admin', 'staff'] },
+      { to: '/reports', labelKey: 'nav.item.reportsDashboard', icon: BarChart3, roles: ['admin', 'staff'] },
     ],
   },
   {
-    label: 'Residents',
+    labelKey: 'nav.group.residents',
     items: [
-      { to: '/residents', label: 'Resident Profiles', icon: Users, roles: ['admin', 'staff', 'viewer'] },
-      { to: '/households', label: 'Households', icon: Home, roles: ['admin', 'staff'] },
-      { to: '/deceased', label: 'Deceased Records', icon: Skull, roles: ['admin', 'staff'] },
+      { to: '/residents', labelKey: 'nav.item.residentProfiles', icon: Users, roles: ['admin', 'staff', 'viewer'] },
+      { to: '/households', labelKey: 'nav.item.households', icon: Home, roles: ['admin', 'staff'] },
+      { to: '/deceased', labelKey: 'nav.item.deceasedRecords', icon: Skull, roles: ['admin', 'staff'] },
     ],
   },
   {
-    label: 'Documents',
+    labelKey: 'nav.group.documents',
     items: [
-      { to: '/documents', label: 'Document Queue', icon: ClipboardList, roles: ['admin', 'staff'] },
-      { to: '/documents/release', label: 'Document Release', icon: CheckSquare, roles: ['admin', 'staff'] },
+      { to: '/documents', labelKey: 'nav.item.documentQueue', icon: ClipboardList, roles: ['admin', 'staff'] },
+      { to: '/documents/release', labelKey: 'nav.item.documentRelease', icon: CheckSquare, roles: ['admin', 'staff'] },
     ],
   },
   {
-    label: 'Finance',
+    labelKey: 'nav.group.finance',
     items: [
-      { to: '/finance/budget', label: 'Budget Overview', icon: Landmark, roles: ['admin', 'staff'] },
-      { to: '/finance/appropriations', label: 'Appropriations', icon: ClipboardList, roles: ['admin', 'staff'] },
-      { to: '/finance/revenues', label: 'Revenue Tracking', icon: TrendingUp, roles: ['admin', 'staff'] },
-      { to: '/finance/funds', label: 'Fund Sources', icon: Wallet, roles: ['admin', 'staff'] },
-      { to: '/finance/disbursements', label: 'Disbursements', icon: ArrowUpFromLine, roles: ['admin', 'staff'] },
-      { to: '/finance/audit', label: 'Finance Audit', icon: ScrollText, roles: ['admin', 'staff'] },
+      { to: '/finance/budget', labelKey: 'nav.item.budgetOverview', icon: Landmark, roles: ['admin', 'staff'] },
+      { to: '/finance/appropriations', labelKey: 'nav.item.appropriations', icon: ClipboardList, roles: ['admin', 'staff'] },
+      { to: '/finance/revenues', labelKey: 'nav.item.revenueTracking', icon: TrendingUp, roles: ['admin', 'staff'] },
+      { to: '/finance/funds', labelKey: 'nav.item.fundSources', icon: Wallet, roles: ['admin', 'staff'] },
+      { to: '/finance/disbursements', labelKey: 'nav.item.disbursements', icon: ArrowUpFromLine, roles: ['admin', 'staff'] },
+      { to: '/finance/audit', labelKey: 'nav.item.financeAudit', icon: ScrollText, roles: ['admin', 'staff'] },
     ],
   },
   {
-    label: 'Records',
+    labelKey: 'nav.group.records',
     items: [
-      { to: '/records', label: 'Blotter Records', icon: FileText, roles: ['admin', 'staff', 'viewer'] },
+      { to: '/records', labelKey: 'nav.item.blotterRecords', icon: FileText, roles: ['admin', 'staff', 'viewer'] },
     ],
   },
   {
-    label: 'Planning',
+    labelKey: 'nav.group.planning',
     items: [
-      { to: '/calendar', label: 'Calendar', icon: Calendar, roles: ['admin', 'staff', 'viewer'] },
-      { to: '/agenda', label: 'Agenda & Minutes', icon: FileText, roles: ['admin', 'staff'] },
+      { to: '/calendar', labelKey: 'nav.item.calendar', icon: Calendar, roles: ['admin', 'staff', 'viewer'] },
+      { to: '/agenda', labelKey: 'nav.item.agendaMinutes', icon: FileText, roles: ['admin', 'staff'] },
     ],
   },
   {
-    label: 'Administration',
+    labelKey: 'nav.group.administration',
     items: [
-      { to: '/assets', label: 'Assets', icon: Package, roles: ['admin'] },
-      { to: '/logs/activity', label: 'Audit Logs', icon: ClipboardCheck, roles: ['admin', 'staff'] },
-      { to: '/settings', label: 'System Settings', icon: Settings, roles: ['admin'] },
+      { to: '/assets', labelKey: 'nav.item.assets', icon: Package, roles: ['admin'] },
+      { to: '/logs/activity', labelKey: 'nav.item.auditLogs', icon: ClipboardCheck, roles: ['admin', 'staff'] },
+      { to: '/settings', labelKey: 'nav.item.systemSettings', icon: Settings, roles: ['admin'] },
     ],
   },
   {
-    label: 'Platform',
+    labelKey: 'nav.group.platform',
     items: [
-      { to: '/platform-admin', label: 'Onboard Barangays', icon: Building2, roles: [], platformAdminOnly: true },
+      { to: '/platform-admin', labelKey: 'nav.item.onboardBarangays', icon: Building2, roles: [], platformAdminOnly: true },
     ],
   },
 ]
@@ -111,6 +113,7 @@ function ActiveDot() {
 }
 
 function InstallPWAButton({ expanded }: { expanded: boolean }) {
+  const { t } = useTranslation()
   const [installEvent, setInstallEvent] = useState<any>(null)
   const [hidden, setHidden] = useState(false)
 
@@ -156,7 +159,7 @@ function InstallPWAButton({ expanded }: { expanded: boolean }) {
         className="flex w-full items-center gap-3 border-b border-sidebar-border px-4 py-2.5 text-sm font-display font-medium text-gold hover:bg-gold/5 transition-colors"
       >
         <Download className="size-4 shrink-0" />
-        <span>Install App</span>
+        <span>{t('sidebar.installApp')}</span>
       </button>
     )
   }
@@ -166,7 +169,7 @@ function InstallPWAButton({ expanded }: { expanded: boolean }) {
       type="button"
       onClick={handleInstall}
       className="flex h-10 w-full items-center justify-center text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-      title="Install App"
+      title={t('sidebar.installApp')}
     >
       <Download className="size-4 shrink-0" />
     </button>
@@ -186,6 +189,7 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
   const navigate = useNavigate()
   const user = getCurrentUser()
   const { theme } = useTheme()
+  const { t } = useTranslation()
 
   useEffect(() => {
     onMobileOpenChange(false)
@@ -230,8 +234,8 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
                   type="button"
                   onClick={onTogglePin}
                   className="ml-auto flex size-8 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  aria-label="Collapse sidebar"
-                  title="Collapse to icons"
+                  aria-label={t('sidebar.collapse')}
+                  title={t('sidebar.collapse')}
                 >
                   <PanelRightClose className="size-4" />
                 </button>
@@ -242,8 +246,8 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
               type="button"
               onClick={onTogglePin}
               className="flex size-8 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
+              aria-label={t('sidebar.expand')}
+              title={t('sidebar.expand')}
             >
               <PanelRightOpen className="size-4" />
             </button>
@@ -261,16 +265,17 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
               if (visibleItems.length === 0) return null
 
               return (
-                <div key={group.label}>
+                <div key={group.labelKey}>
                   {pinned && (
                     <p className="mb-1.5 px-1 font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-muted/80">
-                      {group.label}
+                      {t(group.labelKey)}
                     </p>
                   )}
                   <div className="space-y-0.5">
                     {visibleItems.map((item) => {
                       const Icon = item.icon
                       const active = isActive(item.to)
+                      const label = t(item.labelKey)
 
                       return (
                         <Link
@@ -285,11 +290,11 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
                               ? 'bg-gold/10 text-gold'
                               : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
                           )}
-                          title={!pinned ? item.label : undefined}
+                          title={!pinned ? label : undefined}
                         >
                           {active && !pinned && <ActiveDot />}
                           <Icon className="size-4 shrink-0" />
-                          {pinned && <span className="truncate">{item.label}</span>}
+                          {pinned && <span className="truncate">{label}</span>}
                         </Link>
                       )
                     })}
@@ -304,6 +309,7 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
           <div className={cn('py-3', pinned ? 'space-y-2 px-4' : 'flex flex-col items-center gap-2')}>
             <div className={cn('flex items-center', pinned ? 'gap-2' : 'flex-col gap-1')}>
               <ThemeToggle />
+              <LanguageSwitcher variant="compact" />
               {pinned && (
                 <span className="text-[11px] text-sidebar-muted capitalize">
                   {theme} mode
@@ -332,8 +338,8 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
                   type="button"
                   onClick={handleLogout}
                   className="flex size-8 shrink-0 items-center justify-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-destructive"
-                  aria-label="Logout"
-                  title="Logout"
+                  aria-label={t('sidebar.logout')}
+                  title={t('sidebar.logout')}
                 >
                   <LogOut className="size-4" />
                 </button>
@@ -353,9 +359,9 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
 
       <ConfirmDialog
         open={showLogoutConfirm}
-        title="Sign out"
-        message="Are you sure you want to sign out? You will need to sign in again to access the system."
-        confirmLabel="Sign out"
+        title={t('sidebar.logoutConfirmTitle')}
+        message={t('sidebar.logoutConfirmBody')}
+        confirmLabel={t('sidebar.logoutConfirmAction')}
         destructive
         onConfirm={confirmLogout}
         onCancel={() => setShowLogoutConfirm(false)}

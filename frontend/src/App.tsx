@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter } from 'react-router'
+import { LucideProvider } from 'lucide-react'
 import { ThemeProvider } from '@/lib/theme'
+import { LanguageProvider } from '@/lib/i18n'
 import { resolveApiUrl, isFallbackMode } from '@/lib/apiConfig'
 import AppRoutes from '@/routes'
 import { getClient } from '@/api/client'
@@ -21,14 +23,20 @@ export default function App() {
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <ThemeProvider>
-        {isFallbackMode() && (
-          <div className="fixed bottom-4 left-4 z-50 rounded bg-amber-100 px-3 py-1.5 text-xs text-amber-800 shadow">
-            Using remote — local server unreachable
-          </div>
-        )}
-        <AppRoutes />
-      </ThemeProvider>
+      {/* Slightly lighter stroke than lucide's 2px default reads as more
+          refined/premium at the sizes used throughout the dashboard. */}
+      <LucideProvider strokeWidth={1.75}>
+        <ThemeProvider>
+          <LanguageProvider>
+            {isFallbackMode() && (
+              <div className="fixed bottom-4 left-4 z-50 rounded bg-amber-100 px-3 py-1.5 text-xs text-amber-800 shadow">
+                Using remote — local server unreachable
+              </div>
+            )}
+            <AppRoutes />
+          </LanguageProvider>
+        </ThemeProvider>
+      </LucideProvider>
     </BrowserRouter>
   )
 }

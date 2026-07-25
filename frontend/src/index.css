@@ -44,9 +44,9 @@
   --color-accent-rose: var(--accent-rose);
   --color-accent-amber: var(--accent-amber);
 
-  /* CLUSTR marketing palette — scoped to the landing page. Kept separate
-     from the app's barangay/gold/teal tokens above so the in-app dashboard
-     theme is untouched. */
+  /* CLUSTR marketing palette — the mint/paper tokens below now also drive
+     the in-app dashboard theme (see :root/.dark), so the whole product
+     shares one premium white + mint identity, not just the landing page. */
   --color-mint: var(--mint);
   --color-mint-deep: var(--mint-deep);
   --color-mint-soft: var(--mint-soft);
@@ -71,7 +71,7 @@
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
   --shadow-xl: 0 8px 24px rgba(0,0,0,0.12);
   --shadow-ring: 0 0 0 1px var(--color-border);
-  --shadow-elevated: 0 2px 6px rgba(30,42,74,0.25);
+  --shadow-elevated: 0 2px 6px rgba(0,158,119,0.25);
 }
 
 @utility motion-fade-in {
@@ -138,32 +138,32 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
 :root {
   color-scheme: light;
 
-  --bg: #F4F6F9;
-  --fg: #1A1513;
+  --bg: #F6FBF9;
+  --fg: #10201B;
   --card: #FFFFFF;
-  --card-fg: #1A1513;
+  --card-fg: #10201B;
   --popover: #FFFFFF;
-  --popover-fg: #1A1513;
-  --primary: #1E2A4A;
-  --primary-fg: #FFFFFF;
-  --secondary: #EEF0F4;
-  --secondary-fg: #1A1513;
-  --muted: #EEF0F4;
-  --muted-fg: #8E9096;
-  --accent: #EEF0F4;
-  --accent-fg: #1A1513;
+  --popover-fg: #10201B;
+  --primary: #00D9A3;
+  --primary-fg: #06110D;
+  --secondary: #E9FBF5;
+  --secondary-fg: #10201B;
+  --muted: #EDF6F2;
+  --muted-fg: #5F726C;
+  --accent: #E9FBF5;
+  --accent-fg: #10201B;
   --destructive: #CE1126;
   --destructive-fg: #FFFFFF;
-  --border: #E2E5EA;
-  --input: #E2E5EA;
-  --ring: #D4A854;
+  --border: #DCEAE4;
+  --input: #DCEAE4;
+  --ring: #00B389;
 
-  --capiz: #F9FAFB;
-  --barangay: #1E2A4A;
-  --gold: #D4A854;
-  --teal: #2D8B7A;
-  --narra: #5C4033;
-  --bamboo: #EBE5D8;
+  --capiz: #F9FBFA;
+  --barangay: #009E77;
+  --gold: #00D9A3;
+  --teal: #00B389;
+  --narra: #3C4A45;
+  --bamboo: #E9FBF5;
   --red-pinoy: #CE1126;
 
   --accent-blue: #1E2A4A;
@@ -172,13 +172,13 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
   --accent-amber: #C9953E;
 
   --surface-raised: #FFFFFF;
-  --sidebar: #131E2B;
-  --sidebar-fg: #EDE4D6;
-  --sidebar-muted: #B8ADA0;
-  --sidebar-accent: rgba(255, 255, 255, 0.07);
-  --sidebar-border: #162434;
+  --sidebar: #0B1613;
+  --sidebar-fg: #E9FBF5;
+  --sidebar-muted: #8FA89F;
+  --sidebar-accent: rgba(0, 217, 163, 0.12);
+  --sidebar-border: #142420;
   --surface-overlay: rgba(0, 0, 0, 0.4);
-  --text-subtle: #A09688;
+  --text-subtle: #6B8078;
 
   --mint: #00D9A3;
   --mint-deep: #009E77;
@@ -190,32 +190,32 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
 .dark {
   color-scheme: dark;
 
-  --bg: #12100E;
-  --fg: #E5DCD0;
-  --card: #141211;
-  --card-fg: #E5DCD0;
-  --popover: #141211;
-  --popover-fg: #E5DCD0;
-  --primary: #6B9BAB;
-  --primary-fg: #0B0A09;
-  --secondary: #1C1917;
-  --secondary-fg: #E5DCD0;
-  --muted: #1A1714;
-  --muted-fg: #948A7E;
-  --accent: #1C1917;
-  --accent-fg: #E5DCD0;
+  --bg: #0A120F;
+  --fg: #E9FBF5;
+  --card: #101B17;
+  --card-fg: #E9FBF5;
+  --popover: #101B17;
+  --popover-fg: #E9FBF5;
+  --primary: #00E6AF;
+  --primary-fg: #06110D;
+  --secondary: #14211C;
+  --secondary-fg: #E9FBF5;
+  --muted: #121D19;
+  --muted-fg: #7FA096;
+  --accent: #14211C;
+  --accent-fg: #E9FBF5;
   --destructive: #D94A45;
   --destructive-fg: #FFFFFF;
-  --border: #2A2622;
-  --input: #2A2622;
-  --ring: #C9953E;
+  --border: #1C2E27;
+  --input: #1C2E27;
+  --ring: #00E6AF;
 
-  --capiz: #0B0A09;
-  --barangay: #608B99;
-  --gold: #D4A854;
+  --capiz: #0A120F;
+  --barangay: #00E6AF;
+  --gold: #00E6AF;
   --teal: #2DD4BF;
-  --narra: #C4B4A0;
-  --bamboo: #2A2622;
+  --narra: #B9C9C3;
+  --bamboo: #14211C;
   --red-pinoy: #D94A45;
 
   --accent-blue: #608B99;
@@ -223,14 +223,14 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
   --accent-rose: #D94A45;
   --accent-amber: #C9953E;
 
-  --surface-raised: #1C1917;
-  --sidebar: #131E2B;
-  --sidebar-fg: #EDE4D6;
-  --sidebar-muted: #B8ADA0;
-  --sidebar-accent: rgba(255, 255, 255, 0.07);
-  --sidebar-border: #162434;
+  --surface-raised: #14211C;
+  --sidebar: #0B1613;
+  --sidebar-fg: #E9FBF5;
+  --sidebar-muted: #8FA89F;
+  --sidebar-accent: rgba(0, 230, 175, 0.12);
+  --sidebar-border: #142420;
   --surface-overlay: rgba(0, 0, 0, 0.6);
-  --text-subtle: #7A7064;
+  --text-subtle: #5C7A70;
 
   --mint: #00E6AF;
   --mint-deep: #00B389;
@@ -240,9 +240,9 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
 }
 
 .dark .elevated {
-  background-color: #141211;
-  border-color: #2A2622;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(107, 155, 171, 0.08);
+  background-color: #101B17;
+  border-color: #1C2E27;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 230, 175, 0.1);
   backdrop-filter: blur(8px);
 }
 
