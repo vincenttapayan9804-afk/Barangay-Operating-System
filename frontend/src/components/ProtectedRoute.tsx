@@ -22,6 +22,6 @@ export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
 
   if (state === 'loading') return null
   if (state === 'unauthenticated') return <Navigate to="/login" replace />
-  if (roles && !hasRole(...roles)) return <Navigate to="/" replace />
+  if (roles && !hasRole(...roles)) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }

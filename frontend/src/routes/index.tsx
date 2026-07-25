@@ -1,8 +1,23 @@
-import { Routes, Route } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Routes, Route, Navigate } from 'react-router'
 import Layout from '@/components/Layout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import LoginPage from '@/auth/LoginPage'
+import LandingPage from '@/pages/LandingPage'
 import Dashboard from '@/pages/Dashboard'
+import { verifyAuth } from '@/auth/session'
+
+function RootGate() {
+  const [state, setState] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading')
+
+  useEffect(() => {
+    verifyAuth().then((ok) => setState(ok ? 'authenticated' : 'unauthenticated'))
+  }, [])
+
+  if (state === 'loading') return null
+  if (state === 'authenticated') return <Navigate to="/dashboard" replace />
+  return <LandingPage />
+}
 import { RecordsPage } from '@/features/records'
 import { ResidentsPage } from '@/features/residents'
 import { HouseholdsPage } from '@/features/households'
@@ -19,6 +34,7 @@ import { BudgetOverview, RevenueTracking, FundSources, Disbursements, FinanceAud
 export default function AppRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<RootGate />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         element={
@@ -27,7 +43,7 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route
           path="records"
           element={

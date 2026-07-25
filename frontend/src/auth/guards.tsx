@@ -18,14 +18,14 @@ export function RequireRole({ children, roles }: GuardProps) {
     return <Navigate to="/login" replace />
   }
   if (roles && !hasRole(...roles)) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
   return <>{children}</>
 }
 
 export function RedirectIfAuth({ children }: GuardProps) {
   if (isAuthenticated()) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
   return <>{children}</>
 }
