@@ -3,6 +3,7 @@ import { getClient } from './client'
 import { handleApiError } from './errorHandler'
 import { createActivity } from './activity'
 import { getFinanceConfig, getSetting } from './settings'
+import { indexDocument, deleteDocumentFromIndex } from './searchSync'
 import type { PaginatedResult } from '@/lib/utils'
 
 const COLLECTION = 'document_requests'
@@ -24,6 +25,7 @@ export interface DocumentData {
   payment_amount?: number
   or_no?: string
   barangay_name?: string
+  signature_data?: string | null
 }
 
 export interface ApiDocument extends RecordModel {
@@ -45,6 +47,7 @@ export interface ApiDocument extends RecordModel {
   payment_date: string
   updated: string
   barangay_name: string
+  signature_data: string
 }
 
 /** Minimal, safe-to-expose-publicly subset shown on the QR verification page. */
@@ -88,6 +91,7 @@ export async function createDocument(data: DocumentData): Promise<ApiDocument> {
     }
     const result = await getClient().collection(COLLECTION).create<ApiDocument>(payload)
     createActivity('create', COLLECTION, result.id, `Created document request: ${result.queue_number} — ${result.document_type}`)
+    indexDocument(result)
     return result
   } catch (err) {
     throw handleApiError(err)
@@ -119,6 +123,7 @@ export async function updateDocument(id: string, data: Partial<DocumentData>): P
   try {
     const result = await getClient().collection(COLLECTION).update<ApiDocument>(id, data)
     createActivity('update', COLLECTION, id, `Updated document request: ${result.queue_number} — status: ${result.status}`)
+    indexDocument(result)
     return result
   } catch (err) {
     throw handleApiError(err)
@@ -129,6 +134,7 @@ export async function deleteDocument(id: string): Promise<boolean> {
   try {
     await getClient().collection(COLLECTION).delete(id)
     createActivity('delete', COLLECTION, id, 'Deleted document request')
+    deleteDocumentFromIndex(id)
     return true
   } catch (err) {
     throw handleApiError(err)

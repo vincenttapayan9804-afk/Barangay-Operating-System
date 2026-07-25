@@ -1,9 +1,11 @@
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
-import { Plus, ChevronDown, Calendar, User, Users, BookOpen, FileText } from 'lucide-react'
+import { Plus, ChevronDown, Calendar, User, Users, BookOpen, FileText, History } from 'lucide-react'
 import { getBlotters, createBlotter, updateBlotter, deleteBlotter, getNextCaseNumber, type ApiBlotter, type BlotterData } from '@/api/blotter'
 import { useRealtimeCollection } from '@/hooks/useRealtimeCollection'
+import { notifyHearingScheduled } from '@/api/notifications'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/input'
@@ -105,11 +107,18 @@ export default function RecordsPage() {
 
     try {
       if (editingId) {
+        const wasHearing = blotters.find((b) => b.id === editingId)?.status === 'hearing'
         const { case_number, ...payload } = form
         const updated = await updateBlotter(editingId, payload)
         setBlotters((prev) =>
           prev.map((b) => (b.id === editingId ? updated : b)),
         )
+        if (updated.status === 'hearing' && !wasHearing) {
+          const contact = updated.complainant_contact
+          if (contact && contact.includes('@')) {
+            notifyHearingScheduled(updated, contact, updated.complainant_name)
+          }
+        }
       } else {
         const caseNumber = form.case_number || await getNextCaseNumber()
         const { case_number: _, ...payload } = form
@@ -440,6 +449,10 @@ export default function RecordsPage() {
               <DetailSection title="Metadata">
                 <FieldRow label="Created" value={formatDateTime(flyoutBlotter.created)} />
                 <FieldRow label="Updated" value={formatDateTime(flyoutBlotter.updated)} />
+              </DetailSection>
+
+              <DetailSection icon={<History className="size-3" />} title="Activity History">
+                <ActivityTimeline collection="blotter_records" recordId={flyoutBlotter.id} />
               </DetailSection>
             </>
           )

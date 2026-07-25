@@ -1,11 +1,13 @@
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
-import { Plus, ChevronDown, FileText, Clock, User, CheckCircle2, RotateCcw, Ban, DollarSign, Download } from 'lucide-react'
+import { Plus, ChevronDown, FileText, Clock, User, CheckCircle2, RotateCcw, Ban, DollarSign, Download, History } from 'lucide-react'
 import { getDocuments, createDocument, updateDocument, deleteDocument, getDailyQueueNumber, type ApiDocument } from '@/api/documents'
 import { useRealtimeCollection } from '@/hooks/useRealtimeCollection'
 import { getAllSettings } from '@/api/settings'
+import { notifyDocumentStatus } from '@/api/notifications'
 import { toast } from '@/lib/toast'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/input'
@@ -154,6 +156,7 @@ export default function DocumentsPage() {
       }
       const updated = await updateDocument(id, payload)
       setDocs((prev) => prev.map((d) => (d.id === id ? updated : d)))
+      notifyDocumentStatus(updated)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status')
     }
@@ -479,6 +482,10 @@ export default function DocumentsPage() {
             <DetailSection title="Metadata">
               <FieldRow label="Created" value={formatDateTime(flyoutDoc.created)} />
               <FieldRow label="Updated" value={formatDateTime(flyoutDoc.updated)} />
+            </DetailSection>
+
+            <DetailSection icon={<History className="size-3" />} title="Activity History">
+              <ActivityTimeline collection="document_requests" recordId={flyoutDoc.id} />
             </DetailSection>
           </>
         )}

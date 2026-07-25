@@ -531,6 +531,55 @@ turns it on for a specific barangay from `/platform-admin` → find the barangay
 toggle. Once enabled, every staff login in that barangay requires the same emailed one-time code
 as admins.
 
+### Email notifications (document status, hearing scheduled)
+
+Residents with an email on file (`residents.email_address`) get an automatic email when their
+document request becomes ready for release or is released, and involved parties get one when a
+blotter case is moved to "hearing" status (if their contact field on the case looks like an email
+address). Uses the same SMTP configuration as MFA above (`/_/` → Settings → Mail) — no separate
+setup, and it fails silently (never blocks the underlying status change) if SMTP isn't configured
+or the resident has no email on file.
+
+Delivery goes through a custom PocketBase route (`backend/pb_hooks/notify.pb.js`), not a record
+hook — this codebase already found that PocketBase 0.39.5's classic model hooks don't reliably
+fire for SDK/REST-driven writes (see `docs/ARCHITECTURE.md`'s Finance Audit Trail section for the
+first time this was hit), so the frontend calls the route explicitly right after a status update
+succeeds. `pb_hooks/` is baked into the Docker image and mounted via `--hooksDir` automatically —
+nothing to configure beyond SMTP itself.
+
+### Full-text search (Meilisearch)
+
+Fuzzy, typo-tolerant search across residents, document requests, and blotter records — the
+dashboard search bar (top of every page) upgrades automatically once this is running; it falls
+back to the previous exact/prefix PocketBase-query search with zero configuration if it isn't.
+
+**Works out of the box** with `docker compose up -d` — the `meilisearch` container starts
+alongside PocketBase and runs in "development" mode (no key required) unless you set
+`MEILI_MASTER_KEY`. For production, generate one and set `MEILI_ENV=production` alongside it in
+`.env` (see `.env.example`):
+
+```bash
+MEILI_MASTER_KEY=$(openssl rand -hex 32)
+MEILI_ENV=production
+```
+
+**The frontend never talks to Meilisearch directly and never sees a Meilisearch key.** Every
+search query and every index write is proxied through two authenticated PocketBase routes
+(`backend/pb_hooks/search.pb.js`), which force `barangay_id` from the signed-in session — never
+from anything the client sends — so tenant isolation for search can't be bypassed by a modified
+frontend the way an unenforced client-side filter could be. Per-role visibility matches the rest
+of the app too (a `viewer` account can search residents and blotter records but not the document
+queue, same as what that role can already see in the UI). `meilisearch` has no host port published
+— it's reachable only from `pocketbase` over the internal Docker network.
+
+Indexes populate automatically as staff create/edit records — there's no bulk backfill step for a
+fresh deployment, since new tenants start with no data anyway. If you're restoring from a backup
+or otherwise need to reindex existing records, the simplest path is: `docker compose restart
+meilisearch pocketbase` won't do it (indexing only happens on writes) — re-saving each record once
+(e.g. a no-op edit + save) re-triggers indexing, or clear the affected Meilisearch indexes and
+write a one-off script against the API modules in `frontend/src/api/searchSync.ts` for a proper
+bulk backfill if you're carrying over a large existing dataset.
+
 ---
 
 ## Option B: Direct HTTPS (Without Cloudflare Tunnel)

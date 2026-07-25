@@ -2,6 +2,7 @@ import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useState, useEffect, useMemo } from 'react'
 import { Check, DollarSign, User } from 'lucide-react'
 import { getDocuments, updateDocument, getDocumentFee, type ApiDocument } from '@/api/documents'
+import { notifyDocumentStatus } from '@/api/notifications'
 import { createRevenue } from '@/api/revenues'
 import { getFundSources, type ApiFundSource } from '@/api/fundSources'
 import { Select } from '@/components/ui/select'
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
+import { SignaturePad } from '@/components/SignaturePad'
 import { documentStatusColors } from '@/lib/statusStyles'
 
 export default function ReleasePage() {
@@ -20,6 +22,7 @@ export default function ReleasePage() {
   const [releaseDoc, setReleaseDoc] = useState<ApiDocument | null>(null)
   const [releaseMode, setReleaseMode] = useState<'collect' | 'release'>('release')
   const [receivedBy, setReceivedBy] = useState('')
+  const [signatureData, setSignatureData] = useState<string | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [orNo, setOrNo] = useState('')
   const [paymentDate, setPaymentDate] = useState(today())
@@ -50,6 +53,7 @@ export default function ReleasePage() {
     setReleaseDoc(doc)
     setReleaseMode(mode)
     setReceivedBy('')
+    setSignatureData(null)
     setOrNo(doc.or_no || '')
     setPaymentDate(today())
     setSource(`Document fee — ${doc.document_type.replace(/_/g, ' ')} (#${doc.queue_number})`)
@@ -69,6 +73,7 @@ export default function ReleasePage() {
   function closeReleaseDialog() {
     setReleaseDoc(null)
     setReceivedBy('')
+    setSignatureData(null)
     setPaymentAmount('')
     setOrNo('')
     setPaymentDate(today())
@@ -119,10 +124,12 @@ export default function ReleasePage() {
       status: 'released',
       received_by: receivedBy.trim(),
       released_at: new Date().toISOString(),
+      signature_data: signatureData,
     }
 
     try {
-      await updateDocument(releaseDoc.id, payload)
+      const updated = await updateDocument(releaseDoc.id, payload)
+      notifyDocumentStatus(updated)
 
       const refreshed = await getDocuments()
       setDocs(refreshed)
@@ -313,15 +320,21 @@ export default function ReleasePage() {
                   </div>
                 </>
               ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="received-by">Received by *</Label>
-                  <Input
-                    id="received-by"
-                    value={receivedBy}
-                    onChange={(e) => setReceivedBy(e.target.value)}
-                    placeholder="Full name of recipient"
-                    autoFocus
-                  />
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="received-by">Received by *</Label>
+                    <Input
+                      id="received-by"
+                      value={receivedBy}
+                      onChange={(e) => setReceivedBy(e.target.value)}
+                      placeholder="Full name of recipient"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Signature</Label>
+                    <SignaturePad onChange={setSignatureData} />
+                  </div>
                 </div>
               )}
             </div>

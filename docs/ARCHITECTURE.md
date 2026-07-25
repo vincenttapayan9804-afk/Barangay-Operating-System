@@ -112,6 +112,14 @@ Configured declaratively in `backend/pb_migrations/1785000029_admin_mfa.js` via 
 
 PocketBase has no native WebAuthn support, so the `webauthn` sidecar (`backend/webauthn-service/server.mjs`, Node + `@simplewebauthn/server`) owns the attestation/assertion cryptography. On successful verification it mints a real PocketBase session via the superuser impersonate API. Credentials are stored in the `webauthn_credentials` collection (`backend/pb_migrations/1785000032_webauthn_credentials.js`). Client-side ceremony helpers live in `frontend/src/auth/LoginPage.tsx` via `@simplewebauthn/browser`; users manage their registered passkeys from Settings.
 
+### Custom hook routes (`backend/pb_hooks/`)
+
+PocketBase JS hook files (`*.pb.js`, loaded from `--hooksDir`) can register custom HTTP routes via `routerAdd()`, executed inside PocketBase's own JSVM with access to `$app` (mailer, settings, DB, outbound HTTP via `$http.send`), `$os` (env vars via `$os.getenv`), and `$apis` (auth middleware) — used for email notifications (`notify.pb.js`) and the Meilisearch search proxy (`search.pb.js`, see [Full-Text Search](#full-text-search-meilisearch) below). Three pitfalls verified empirically against a real PocketBase 0.39.5 instance, none obvious from the docs:
+
+1. A `routerAdd` callback cannot reference a top-level `const`/`function` declared elsewhere in the file — only bindings declared *inside* the handler itself are visible when the route is actually dispatched (top-level references throw `ReferenceError: ... is not defined`, even though the file loads without error at startup). Top-level code that never runs inside a handler — e.g. one-time index setup — is unaffected and executes normally. Every handler in this repo's hooks is fully self-contained; see the comment in `notify.pb.js` before "DRY-ing up" shared logic across handlers.
+2. `e.bindBody(data)` must be called before `e.auth` is read in the same handler — reading `e.auth` first leaves the request body unreadable by the time `bindBody` runs, so every field silently binds to its zero value.
+3. A `DynamicModel` field declared with an object/array shape (e.g. `document: {}`) binds to a Go-backed wrapper, not a plain JS object — `data.document.id` silently reads as `undefined` even though the field is genuinely present (confirmed via `JSON.stringify`, which does see it correctly). Round-tripping through `JSON.parse(JSON.stringify(data.document))` turns it into a real plain object safe to use normally.
+
 ### Server-side rules
 
 Collection-level access rules are defined in PocketBase migration files at `backend/pb_migrations/`. These are JavaScript files that PocketBase executes on startup to configure collections and their access rules. Rules combine role checks with tenant scoping:
@@ -137,6 +145,17 @@ This approach keeps the bundle size small and avoids unnecessary complexity. If 
 ## Internationalization (i18n)
 
 A lightweight, dependency-free i18n system (no `react-i18next`) lives in `frontend/src/lib/i18n/`: a flat `Record<TranslationKey, string>` dictionary per language (`translations.ts`), a `LanguageProvider` context that persists the selection to `localStorage`, and a `useTranslation()` hook exposing `{ language, setLanguage, t }`. Supported languages: English, Tagalog, Bisaya/Cebuano. `LanguageSwitcher` (`frontend/src/components/LanguageSwitcher.tsx`) renders as a compact cycling button (sidebar footer) or a full segmented control (Settings, login page).
+
+## Full-Text Search (Meilisearch)
+
+The dashboard search bar (`frontend/src/pages/hooks/useGlobalSearch.ts`) tries a Meilisearch-backed proxy first for residents, document requests, and blotter records, falling back to the original per-collection PocketBase `~` (prefix) query for everything else — and for those same three collections too, if the proxy reports it isn't configured (`{ configured: false }`) or the request fails outright. This makes Meilisearch a pure enhancement: a deployment that never sets it up gets exactly the pre-existing search behavior.
+
+**The frontend never talks to Meilisearch directly.** Both directions go through authenticated PocketBase routes in `backend/pb_hooks/search.pb.js`:
+
+- `POST /api/search/index` — called by `frontend/src/api/searchSync.ts` after every create/update/delete in `residents.ts`/`documents.ts`/`blotter.ts` (same fire-and-forget, never-block-the-mutation pattern as `createActivity()`). The route overwrites whatever `barangay_id` the client sent with the authenticated session's own value before writing to Meilisearch — the one line that actually prevents a compromised frontend from indexing data under another tenant.
+- `POST /api/search/query` — called by `useGlobalSearch`. Builds a `barangay_id = "<session's tenant>"` filter server-side (never from the request) for every index searched, and additionally restricts which indexes a request is even allowed to touch based on the authenticated user's role (mirroring the same per-collection role rules used everywhere else — e.g. `viewer` can search residents/blotter but not documents).
+
+Both index writes and index setup (creating each index with an explicit `primaryKey: "id"`, and marking `barangay_id` filterable) happen from the hook file using `$app.settings()`-independent env vars (`MEILI_URL`, `MEILI_MASTER_KEY`) via `$os.getenv` — the Meilisearch master key never leaves the backend. See `docs/DEPLOYMENT.md` "Full-text search (Meilisearch)" for the Docker Compose setup.
 
 ## Code Splitting
 

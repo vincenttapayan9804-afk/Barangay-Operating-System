@@ -6,7 +6,7 @@ import { getResidents, createResident, updateResident, deleteResident, type Inha
 import { searchHouseholds, getHousehold, type ApiHousehold } from '@/api/households'
 import { getDocuments, type ApiDocument } from '@/api/documents'
 import { getBlotters, type ApiBlotter } from '@/api/blotter'
-import { getActivities, type ApiActivity } from '@/api/activity'
+import { ActivityTimeline } from '@/components/ActivityTimeline'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -19,7 +19,7 @@ import { FormSection } from '@/components/ui/form-section'
 import { Combobox } from '@/components/ui/combobox'
 import { ConsentCheckbox } from '@/components/ui/consent-checkbox'
 import { hasRole } from '@/auth/session'
-import { cn, formatDate, formatDateTime } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { tagColors } from '@/lib/statusStyles'
 import { generateResidentsCsv, downloadCsv } from '@/lib/bims-csv-export'
 import { DataTable, type Column } from '@/components/ui/data-table'
@@ -318,7 +318,6 @@ export default function ResidentsPage() {
   const [flyoutHousehold, setFlyoutHousehold] = useState<ApiHousehold | null>(null)
   const [flyoutDocs, setFlyoutDocs] = useState<ApiDocument[]>([])
   const [flyoutBlotters, setFlyoutBlotters] = useState<ApiBlotter[]>([])
-  const [flyoutActivities, setFlyoutActivities] = useState<ApiActivity[]>([])
   const [flyoutLoading, setFlyoutLoading] = useState(false)
 
   const { data: genderOptions } = useLookups('gender_options')
@@ -511,20 +510,17 @@ export default function ResidentsPage() {
     setFlyoutHousehold(null)
     setFlyoutDocs([])
     setFlyoutBlotters([])
-    setFlyoutActivities([])
     Promise.all([
       r.household_id ? getHousehold(r.household_id).catch(() => null) : Promise.resolve(null),
       getDocuments(),
       getBlotters(),
-      getActivities(1, 50, '-id', undefined, r.id),
-    ]).then(([household, docs, blotters, acts]) => {
+    ]).then(([household, docs, blotters]) => {
       setFlyoutHousehold(household as ApiHousehold | null)
       setFlyoutDocs((docs as ApiDocument[]).filter((d) => d.resident_name && r.first_name && d.resident_name.includes(r.first_name)))
       setFlyoutBlotters((blotters as ApiBlotter[]).filter((b) =>
         (b.complainant_name && r.first_name && b.complainant_name.includes(r.first_name)) ||
         (b.respondent_name && r.first_name && b.respondent_name.includes(r.first_name)),
       ))
-      setFlyoutActivities(acts.items)
     }).catch(() => {}).finally(() => setFlyoutLoading(false))
   }
 
@@ -533,7 +529,6 @@ export default function ResidentsPage() {
     setFlyoutHousehold(null)
     setFlyoutDocs([])
     setFlyoutBlotters([])
-    setFlyoutActivities([])
   }
 
   function closePanel() {
@@ -1212,19 +1207,7 @@ export default function ResidentsPage() {
             </DetailSection>
 
             <DetailSection icon={<Activity className="size-3" />} title="Activity History">
-              {flyoutActivities.length === 0 ? (
-                <p className="text-muted-foreground">No activity history found.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {flyoutActivities.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between text-sm gap-2">
-                      <span className={cn('inline-flex shrink-0 rounded-md px-3 py-0.5 text-xs font-bold', statusClass(a.action, 'activity'))}>{a.action}</span>
-                      <span className="flex-1 px-2 text-muted-foreground truncate">{a.details}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(a.created)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <ActivityTimeline collection="residents" recordId={flyoutResident.id} />
             </DetailSection>
           </>
         )}

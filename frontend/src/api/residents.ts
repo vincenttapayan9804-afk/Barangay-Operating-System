@@ -2,6 +2,7 @@ import type { RecordModel } from 'pocketbase'
 import { getClient } from './client'
 import { handleApiError } from './errorHandler'
 import { createActivity } from './activity'
+import { indexResident, deleteResidentFromIndex } from './searchSync'
 import type { PaginatedResult } from '@/lib/utils'
 
 const COLLECTION = 'residents'
@@ -214,6 +215,7 @@ export async function createResident(data: InhabitantData): Promise<ApiResident>
   try {
     const result = await getClient().collection(COLLECTION).create<ApiResident>({ ...data, data_set: 'BIPS' })
     createActivity('create', COLLECTION, result.id, `Created resident: ${result.first_name} ${result.last_name}`)
+    indexResident(result)
     return result
   } catch (err) {
     throw handleApiError(err)
@@ -242,6 +244,7 @@ export async function updateResident(id: string, data: Partial<InhabitantData>):
 
     const result = await getClient().collection(COLLECTION).update<ApiResident>(id, payload)
     createActivity('update', COLLECTION, id, `Updated resident: ${result.first_name} ${result.last_name}`)
+    indexResident(result)
     return result
   } catch (err) {
     throw handleApiError(err)
@@ -252,6 +255,7 @@ export async function deleteResident(id: string): Promise<boolean> {
   try {
     await getClient().collection(COLLECTION).delete(id)
     createActivity('delete', COLLECTION, id, 'Deleted resident')
+    deleteResidentFromIndex(id)
     return true
   } catch (err) {
     throw handleApiError(err)

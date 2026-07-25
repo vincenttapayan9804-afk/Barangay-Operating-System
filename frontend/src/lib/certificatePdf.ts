@@ -124,7 +124,7 @@ export async function generateCertificatePdf(doc: ApiDocument, org: CertificateO
     y -= lineHeight
   }
 
-  // Signature block, right-aligned.
+  // Signature block, right-aligned — the issuing official.
   const sigY = Math.max(y - 60, 220)
   const captain = org.barangayCaptain || '_________________________'
   const captainWidth = bold.widthOfTextAtSize(captain, 12)
@@ -138,6 +138,31 @@ export async function generateCertificatePdf(doc: ApiDocument, org: CertificateO
     thickness: 0.8,
     color: rgb(0.3, 0.3, 0.3),
   })
+
+  // Signature block, left-aligned — proof of receipt, only present once the
+  // document has actually been handed over (see ReleasePage's SignaturePad).
+  if (doc.status === 'released' && doc.received_by) {
+    const sigBlockWidth = 180
+    if (doc.signature_data) {
+      try {
+        const sigBytes = Uint8Array.from(atob(doc.signature_data.split(',')[1]), (c) => c.charCodeAt(0))
+        const sigImage = await pdfDoc.embedPng(sigBytes)
+        const sigDrawHeight = 45
+        const sigDrawWidth = Math.min(sigBlockWidth, (sigImage.width / sigImage.height) * sigDrawHeight)
+        page.drawImage(sigImage, { x: margin, y: sigY + 2, width: sigDrawWidth, height: sigDrawHeight })
+      } catch {
+        // Malformed signature data — skip the image, the printed name below still stands.
+      }
+    }
+    page.drawLine({
+      start: { x: margin, y: sigY - 4 },
+      end: { x: margin + sigBlockWidth, y: sigY - 4 },
+      thickness: 0.8,
+      color: rgb(0.3, 0.3, 0.3),
+    })
+    page.drawText(doc.received_by, { x: margin, y: sigY - 16, size: 10, font: regular })
+    page.drawText('Received by', { x: margin, y: sigY - 28, size: 8, font: italic, color: rgb(0.4, 0.45, 0.43) })
+  }
 
   // QR verification block, bottom-left.
   const verifyUrl = `${window.location.origin}/verify/${doc.id}`
