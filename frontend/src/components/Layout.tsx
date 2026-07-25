@@ -55,7 +55,7 @@ export default function Layout() {
           <Menu className="size-5" />
         </button>
         <img
-          src="/icon-logo.png"
+          src={`${import.meta.env.BASE_URL}icon-logo.png`}
           alt="BarangayOS"
           className="size-8 shrink-0 rounded-md object-contain"
         />
@@ -68,7 +68,7 @@ export default function Layout() {
         {brgyName && (
           <div className="sticky top-0 z-30 hidden border-b bg-card px-5 py-2 md:flex md:items-center motion-fade-in">
             <img
-              src="/standard-logo.png"
+              src={`${import.meta.env.BASE_URL}standard-logo.png`}
               alt=""
               className="h-10 w-auto object-contain shrink-0"
             />

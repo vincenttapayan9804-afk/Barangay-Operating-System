@@ -213,7 +213,7 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
           {(pinned || mobileOpen) ? (
             <>
               <img
-                src="/icon-logo.png"
+                src={`${import.meta.env.BASE_URL}icon-logo.png`}
                 alt="BarangayOS"
                 className="size-8 shrink-0 rounded-md object-contain"
               />

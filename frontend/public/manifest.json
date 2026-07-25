@@ -2,7 +2,8 @@
   "name": "BarangayOS",
   "short_name": "BarangayOS",
   "description": "Barangay Records Management System — digital tools for Philippine LGU governance",
-  "start_url": "/",
+  "start_url": "/Barangay-Operating-System/",
+  "scope": "/Barangay-Operating-System/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
@@ -12,9 +13,9 @@
   "lang": "en-PH",
   "dir": "ltr",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/Barangay-Operating-System/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/Barangay-Operating-System/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/Barangay-Operating-System/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "screenshots": [],
   "prefer_related_applications": false

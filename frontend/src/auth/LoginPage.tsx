@@ -47,7 +47,7 @@ export default function LoginPage() {
 
         {/* Brand mark on mobile — overlaid on illustration */}
         <div className="absolute left-6 top-6 z-20 lg:hidden">
-          <img src="/standard-logo.png" alt="" className="h-10 w-auto object-contain" />
+          <img src={`${import.meta.env.BASE_URL}standard-logo.png`} alt="" className="h-10 w-auto object-contain" />
         </div>
 
         {/* Illustration — fills the entire panel */}
@@ -72,7 +72,7 @@ export default function LoginPage() {
           {/* Branding */}
           <div className="text-center">
             <img
-              src="/standard-logo.png"
+              src={`${import.meta.env.BASE_URL}standard-logo.png`}
               alt="BarangayOS"
               className="mx-auto w-full max-w-xs object-contain"
             />
