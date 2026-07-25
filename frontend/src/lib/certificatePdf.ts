@@ -164,8 +164,11 @@ export async function generateCertificatePdf(doc: ApiDocument, org: CertificateO
     page.drawText('Received by', { x: margin, y: sigY - 28, size: 8, font: italic, color: rgb(0.4, 0.45, 0.43) })
   }
 
-  // QR verification block, bottom-left.
-  const verifyUrl = `${window.location.origin}/verify/${doc.id}`
+  // QR verification block, bottom-left. Route is under the router's
+  // basename (BASE_URL) — on GitHub Pages that's a subpath, e.g.
+  // /Barangay-Operating-System/, so it must be included or the QR code
+  // resolves to a 404 at the domain root.
+  const verifyUrl = `${window.location.origin}${import.meta.env.BASE_URL}verify/${doc.id}`
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 240 })
   const qrBytes = Uint8Array.from(atob(qrDataUrl.split(',')[1]), (c) => c.charCodeAt(0))
   const qrImage = await pdfDoc.embedPng(qrBytes)
