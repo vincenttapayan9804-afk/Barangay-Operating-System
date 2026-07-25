@@ -8,6 +8,7 @@ export interface Barangay extends RecordModel {
   province?: string
   region?: string
   active: boolean
+  require_staff_mfa: boolean
 }
 
 const BARANGAYS = 'barangays'
@@ -44,6 +45,14 @@ export async function createBarangay(data: {
 export async function setBarangayActive(id: string, active: boolean): Promise<void> {
   try {
     await getClient().collection(BARANGAYS).update(id, { active })
+  } catch (err) {
+    throw handleApiError(err)
+  }
+}
+
+export async function setBarangayRequireStaffMfa(id: string, require_staff_mfa: boolean): Promise<void> {
+  try {
+    await getClient().collection(BARANGAYS).update(id, { require_staff_mfa })
   } catch (err) {
     throw handleApiError(err)
   }

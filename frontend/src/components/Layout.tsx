@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { Menu, LogOut } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import OfflineIndicator from '@/offline/OfflineIndicator'
 import { Toaster } from '@/components/ui/toast'
+import { Spinner } from '@/components/ui/spinner'
 import { getAllSettings } from '@/api/settings'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { isDemoModeEnabled, exitDemoMode } from '@/lib/demoAccounts'
@@ -134,7 +135,15 @@ export default function Layout() {
           </div>
         )}
         <div key={location.pathname} className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 lg:p-8 motion-fade-in motion-slide-up">
-          <Outlet />
+          <Suspense
+            fallback={
+              <div className="flex h-[60vh] items-center justify-center">
+                <Spinner size="lg" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
         <OfflineIndicator />
         <Toaster position="bottom-right" richColors closeButton />

@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Search, ExternalLink, Loader2 } from 'lucide-react'
 import { useGlobalSearch } from './hooks/useGlobalSearch'
+import { useTranslation } from '@/lib/i18n'
 
 export default function DashboardSearch() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -35,7 +37,7 @@ export default function DashboardSearch() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Maghanap ng residente o dokumento..."
+          placeholder={t('search.placeholder')}
           className="w-full rounded-lg bg-primary/5 py-3.5 pl-12 pr-4 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none ring-1 ring-inset ring-border/50 transition-all focus:ring-2 focus:ring-gold/50 focus:bg-card"
         />
         {searching && (
@@ -48,11 +50,11 @@ export default function DashboardSearch() {
           {searching ? (
             <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              Naghahanap...
+              {t('search.searching')}
             </div>
           ) : totalResults === 0 && hasSearched ? (
             <p className="py-4 text-center text-xs text-muted-foreground/60">
-              Walang nakitang tugma sa &quot;{query}&quot;
+              {t('search.noResultsFor')} &quot;{query}&quot;
             </p>
           ) : (
             <div className="space-y-2">
@@ -67,7 +69,7 @@ export default function DashboardSearch() {
                       onClick={() => { navigate(group.link); setOpen(false); setQuery('') }}
                       className="text-[10px] text-gold hover:underline"
                     >
-                      Tingnan Lahat
+                      {t('search.viewAll')}
                     </button>
                   </div>
                   <div className="space-y-0.5">

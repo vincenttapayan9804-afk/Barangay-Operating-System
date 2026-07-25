@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Building2, Plus, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Building2, Plus, ShieldCheck, ShieldOff, KeyRound } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import {
   createBarangay,
   createBarangayAdmin,
   setBarangayActive,
+  setBarangayRequireStaffMfa,
   type Barangay,
 } from '@/api/platformAdmin'
 import { ApiError } from '@/api/errorHandler'
@@ -109,6 +110,16 @@ export default function PlatformAdmin() {
     try {
       await setBarangayActive(b.id, !b.active)
       toast.success(`${b.name} is now ${!b.active ? 'active' : 'suspended'}.`)
+      await refresh()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update barangay')
+    }
+  }
+
+  async function toggleStaffMfa(b: Barangay) {
+    try {
+      await setBarangayRequireStaffMfa(b.id, !b.require_staff_mfa)
+      toast.success(`Staff MFA is now ${!b.require_staff_mfa ? 'required' : 'optional'} for ${b.name}.`)
       await refresh()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to update barangay')
@@ -225,23 +236,34 @@ export default function PlatformAdmin() {
                     {[b.municipality_city, b.province, b.region].filter(Boolean).join(', ') || '—'}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleActive(b)}
-                  className="shrink-0"
-                >
-                  {b.active ? (
-                    <>
-                      <ShieldCheck className="mr-1.5 size-3.5 text-teal" /> Active
-                    </>
-                  ) : (
-                    <>
-                      <ShieldOff className="mr-1.5 size-3.5 text-muted-foreground" /> Suspended
-                    </>
-                  )}
-                </Button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleStaffMfa(b)}
+                    title="Require staff accounts in this barangay to complete email-OTP MFA at login"
+                  >
+                    <KeyRound className={`mr-1.5 size-3.5 ${b.require_staff_mfa ? 'text-teal' : 'text-muted-foreground'}`} />
+                    Staff MFA {b.require_staff_mfa ? 'Required' : 'Optional'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleActive(b)}
+                  >
+                    {b.active ? (
+                      <>
+                        <ShieldCheck className="mr-1.5 size-3.5 text-teal" /> Active
+                      </>
+                    ) : (
+                      <>
+                        <ShieldOff className="mr-1.5 size-3.5 text-muted-foreground" /> Suspended
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             ))}
             {barangays.length === 0 && (

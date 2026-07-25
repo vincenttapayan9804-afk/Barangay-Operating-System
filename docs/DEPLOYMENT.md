@@ -519,6 +519,18 @@ environment variables set:
    passkey" on the login screen. Nothing changes for accounts that don't register one — password
    (+ MFA for admins) keeps working exactly as before.
 
+### Multi-factor authentication (MFA)
+
+Admin-role accounts always require a second factor (password + emailed one-time code) at login —
+no configuration needed, this ships on by default. It requires SMTP to be configured in the
+PocketBase dashboard (`/_/` → Settings → Mail) or OTP emails won't send.
+
+Staff-role MFA is opt-in per barangay (not on by default — it adds real friction to routine daily
+logins, so it's a choice each tenant makes rather than a blanket requirement). A platform operator
+turns it on for a specific barangay from `/platform-admin` → find the barangay → **Staff MFA**
+toggle. Once enabled, every staff login in that barangay requires the same emailed one-time code
+as admins.
+
 ---
 
 ## Option B: Direct HTTPS (Without Cloudflare Tunnel)

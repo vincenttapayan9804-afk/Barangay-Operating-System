@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { Plus, ChevronDown, Calendar, User, Users, BookOpen, FileText } from 'lucide-react'
 import { getBlotters, createBlotter, updateBlotter, deleteBlotter, getNextCaseNumber, type ApiBlotter, type BlotterData } from '@/api/blotter'
+import { useRealtimeCollection } from '@/hooks/useRealtimeCollection'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/input'
@@ -68,12 +69,18 @@ export default function RecordsPage() {
   const [flyoutBlotter, setFlyoutBlotter] = useState<ApiBlotter | null>(null)
   
 
-  useEffect(() => {
-    getBlotters()
+  function loadBlotters() {
+    return getBlotters()
       .then(setBlotters)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load blotters'))
-      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    loadBlotters().finally(() => setLoading(false))
   }, [])
+
+  useRealtimeCollection('blotter_records', loadBlotters)
 
   const [searchParams] = useSearchParams()
   const selectedId = searchParams.get('selected')

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
 import { ChevronDown, DoorOpen, LogOut, User, Clock } from 'lucide-react'
 import { getVisitors, createVisitor, updateVisitor, deleteVisitor, checkOutVisitor, type ApiVisitor } from '@/api/visitors'
+import { useRealtimeCollection } from '@/hooks/useRealtimeCollection'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/input'
@@ -39,14 +40,21 @@ export default function VisitorLogPage() {
   const [error, setError] = useState<string | null>(null)
   const [flyoutVisitor, setFlyoutVisitor] = useState<ApiVisitor | null>(null)
 
-  useEffect(() => {
-    getVisitors()
+  function loadVisitors() {
+    return getVisitors()
       .then((data) => setVisitors(data))
       .catch((err) =>
         setError(err instanceof Error ? err.message : 'Failed to load visitors'),
       )
-      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    loadVisitors().finally(() => setLoading(false))
   }, [])
+
+  // Live-updates the log when another staff session checks a visitor in/out.
+  useRealtimeCollection('visitor_logs', loadVisitors)
 
   const [searchParams] = useSearchParams()
   const selectedId = searchParams.get('selected')

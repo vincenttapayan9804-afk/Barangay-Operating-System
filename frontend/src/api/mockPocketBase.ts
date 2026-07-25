@@ -425,6 +425,15 @@ function makeRecordService(name: string, authStore: MockAuthStore) {
       }
       return true
     },
+    // Demo mode has no server pushing events, so realtime is a no-op —
+    // present only so callers using PocketBase's .subscribe()/.unsubscribe()
+    // (see useRealtimeCollection) don't hit an undefined method.
+    async subscribe() {
+      return () => {}
+    },
+    async unsubscribe() {
+      // no-op
+    },
   }
 
   if (name !== 'users') return base

@@ -68,6 +68,19 @@ const en = {
   'common.save': 'Save',
   'common.cancel': 'Cancel',
   'common.search': 'Search',
+
+  // Global search (dashboard header)
+  'search.placeholder': 'Search for a resident or document...',
+  'search.searching': 'Searching...',
+  'search.noResultsFor': 'No matches found for',
+  'search.viewAll': 'View All',
+  'search.collection.residents': 'Residents',
+  'search.collection.documents': 'Documents',
+  'search.collection.blotter': 'Blotter Records',
+  'search.collection.households': 'Households',
+  'search.collection.visitorLog': 'Visitor Log',
+  'search.collection.assets': 'Assets',
+  'search.collection.meetings': 'Meetings',
 } as const
 
 export type TranslationKey = keyof typeof en
@@ -128,6 +141,18 @@ const tl: Record<TranslationKey, string> = {
   'common.save': 'I-save',
   'common.cancel': 'Kanselahin',
   'common.search': 'Maghanap',
+
+  'search.placeholder': 'Maghanap ng residente o dokumento...',
+  'search.searching': 'Naghahanap...',
+  'search.noResultsFor': 'Walang nakitang tugma sa',
+  'search.viewAll': 'Tingnan Lahat',
+  'search.collection.residents': 'Mga Residente',
+  'search.collection.documents': 'Mga Dokumento',
+  'search.collection.blotter': 'Talaan ng Blotter',
+  'search.collection.households': 'Sambahayan',
+  'search.collection.visitorLog': 'Talaan ng Bisita',
+  'search.collection.assets': 'Ari-arian',
+  'search.collection.meetings': 'Mga Pulong',
 }
 
 const ceb: Record<TranslationKey, string> = {
@@ -186,6 +211,18 @@ const ceb: Record<TranslationKey, string> = {
   'common.save': 'I-save',
   'common.cancel': 'Kanselahon',
   'common.search': 'Pangita',
+
+  'search.placeholder': 'Pangitaa ang residente o dokumento...',
+  'search.searching': 'Nagpangita...',
+  'search.noResultsFor': 'Walay nakit-an nga tugma sa',
+  'search.viewAll': 'Tan-awa Tanan',
+  'search.collection.residents': 'Mga Residente',
+  'search.collection.documents': 'Mga Dokumento',
+  'search.collection.blotter': 'Talaan sa Blotter',
+  'search.collection.households': 'Panimalay',
+  'search.collection.visitorLog': 'Talaan sa Bisita',
+  'search.collection.assets': 'Kabtangan',
+  'search.collection.meetings': 'Mga Miting',
 }
 
 export const translations: Record<Language, Record<TranslationKey, string>> = { en, tl, ceb }

@@ -303,7 +303,6 @@ export function FundSources() {
           { header: 'Status', key: 'status' },
         ]}
         fetchData={async () => {
-          const { getFundSources } = await import('@/api/fundSources')
           const data = await getFundSources()
           return data.map((f) => ({
             name: f.name,

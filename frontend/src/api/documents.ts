@@ -2,6 +2,7 @@ import type { RecordModel } from 'pocketbase'
 import { getClient } from './client'
 import { handleApiError } from './errorHandler'
 import { createActivity } from './activity'
+import { getFinanceConfig, getSetting } from './settings'
 import type { PaginatedResult } from '@/lib/utils'
 
 const COLLECTION = 'document_requests'
@@ -22,6 +23,7 @@ export interface DocumentData {
   payment_date?: string
   payment_amount?: number
   or_no?: string
+  barangay_name?: string
 }
 
 export interface ApiDocument extends RecordModel {
@@ -42,6 +44,19 @@ export interface ApiDocument extends RecordModel {
   or_no: string
   payment_date: string
   updated: string
+  barangay_name: string
+}
+
+/** Minimal, safe-to-expose-publicly subset shown on the QR verification page. */
+export interface PublicDocumentVerification {
+  id: string
+  document_type: string
+  other_document_type: string
+  resident_name: string
+  queue_number: string
+  status: string
+  released_at: string
+  barangay_name: string
 }
 
 export async function getDocuments(): Promise<ApiDocument[]> {
@@ -62,11 +77,41 @@ export async function getDocument(id: string): Promise<ApiDocument> {
 
 export async function createDocument(data: DocumentData): Promise<ApiDocument> {
   try {
-    const result = await getClient().collection(COLLECTION).create<ApiDocument>(data)
+    let payload = data
+    if (!payload.barangay_name) {
+      // Snapshot the tenant's configured display name at request time (same
+      // pattern as resident_name below) — the public QR verification page
+      // is unauthenticated and can't read system_settings, so this can't be
+      // resolved later via a live join.
+      const barangayName = await getSetting('barangay_name').catch(() => null)
+      if (barangayName) payload = { ...payload, barangay_name: String(barangayName) }
+    }
+    const result = await getClient().collection(COLLECTION).create<ApiDocument>(payload)
     createActivity('create', COLLECTION, result.id, `Created document request: ${result.queue_number} — ${result.document_type}`)
     return result
   } catch (err) {
     throw handleApiError(err)
+  }
+}
+
+/**
+ * Fetches only the fields safe to show on the public, unauthenticated QR
+ * verification page. Server-side, document_requests.viewRule additionally
+ * only allows this for status="released" records — see
+ * 1785000034_public_document_verification.js. Returns null for anything
+ * that isn't a released, existing document (pending/processing/cancelled
+ * requests stay fully private).
+ */
+export async function getDocumentForVerification(id: string): Promise<PublicDocumentVerification | null> {
+  try {
+    return await getClient()
+      .collection(COLLECTION)
+      .getOne<PublicDocumentVerification>(id, {
+        fields: 'id,document_type,other_document_type,resident_name,queue_number,status,released_at,barangay_name',
+        requestKey: null,
+      })
+  } catch {
+    return null
   }
 }
 
@@ -113,7 +158,6 @@ export async function getDocumentsPage(
 
 export async function getDocumentFee(documentType: string): Promise<number> {
   try {
-    const { getFinanceConfig } = await import('./settings')
     const config = await getFinanceConfig()
     if (!config?.document_fees) return 0
     const fee = (config.document_fees as unknown as Record<string, number>)[documentType]

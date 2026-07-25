@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { getClient } from '@/api/client'
 import { getCurrentUser, type Role } from '@/auth/session'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 
 interface CollectionConfig {
   name: string
-  label: string
+  labelKey: TranslationKey
   roles: Role[]
   searchFields: string[]
   titleField: string
@@ -13,13 +14,13 @@ interface CollectionConfig {
 }
 
 const COLLECTIONS: CollectionConfig[] = [
-  { name: 'residents', label: 'Residents', roles: ['admin', 'staff', 'viewer'], searchFields: ['first_name', 'last_name'], titleField: 'last_name', subtitleField: 'first_name', link: '/residents' },
-  { name: 'document_requests', label: 'Documents', roles: ['admin', 'staff'], searchFields: ['resident_name', 'queue_number', 'document_type'], titleField: 'resident_name', subtitleField: 'document_type', link: '/documents' },
-  { name: 'blotter_records', label: 'Blotter Records', roles: ['admin', 'staff', 'viewer'], searchFields: ['complainant_name', 'respondent_name', 'case_number'], titleField: 'case_number', subtitleField: 'complainant_name', link: '/records' },
-  { name: 'households', label: 'Households', roles: ['admin', 'staff'], searchFields: ['household_name', 'household_number'], titleField: 'household_name', subtitleField: 'household_number', link: '/households' },
-  { name: 'visitor_logs', label: 'Visitor Log', roles: ['admin', 'staff'], searchFields: ['visitor_name', 'purpose'], titleField: 'visitor_name', subtitleField: 'purpose', link: '/logs/visitors' },
-  { name: 'assets', label: 'Assets', roles: ['admin'], searchFields: ['name', 'serial_number'], titleField: 'name', subtitleField: 'asset_type', link: '/assets' },
-  { name: 'meetings', label: 'Meetings', roles: ['admin', 'staff'], searchFields: ['title'], titleField: 'title', subtitleField: 'meeting_date', link: '/agenda' },
+  { name: 'residents', labelKey: 'search.collection.residents', roles: ['admin', 'staff', 'viewer'], searchFields: ['first_name', 'last_name'], titleField: 'last_name', subtitleField: 'first_name', link: '/residents' },
+  { name: 'document_requests', labelKey: 'search.collection.documents', roles: ['admin', 'staff'], searchFields: ['resident_name', 'queue_number', 'document_type'], titleField: 'resident_name', subtitleField: 'document_type', link: '/documents' },
+  { name: 'blotter_records', labelKey: 'search.collection.blotter', roles: ['admin', 'staff', 'viewer'], searchFields: ['complainant_name', 'respondent_name', 'case_number'], titleField: 'case_number', subtitleField: 'complainant_name', link: '/records' },
+  { name: 'households', labelKey: 'search.collection.households', roles: ['admin', 'staff'], searchFields: ['household_name', 'household_number'], titleField: 'household_name', subtitleField: 'household_number', link: '/households' },
+  { name: 'visitor_logs', labelKey: 'search.collection.visitorLog', roles: ['admin', 'staff'], searchFields: ['visitor_name', 'purpose'], titleField: 'visitor_name', subtitleField: 'purpose', link: '/logs/visitors' },
+  { name: 'assets', labelKey: 'search.collection.assets', roles: ['admin'], searchFields: ['name', 'serial_number'], titleField: 'name', subtitleField: 'asset_type', link: '/assets' },
+  { name: 'meetings', labelKey: 'search.collection.meetings', roles: ['admin', 'staff'], searchFields: ['title'], titleField: 'title', subtitleField: 'meeting_date', link: '/agenda' },
 ]
 
 export interface SearchResultItem {
@@ -53,6 +54,7 @@ function buildFilter(fields: string[], q: string): string {
 }
 
 export function useGlobalSearch(): UseGlobalSearchReturn {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResultGroup[]>([])
   const [searching, setSearching] = useState(false)
@@ -79,6 +81,7 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
 
       const groupResults = await Promise.all(
         accessible.map(async (col) => {
+          const label = t(col.labelKey)
           try {
             const filter = buildFilter(col.searchFields, q)
             const needed = [col.titleField, col.subtitleField].filter(Boolean)
@@ -90,14 +93,14 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
             const items: SearchResultItem[] = list.items.map((record) => ({
               id: record.id,
               collection: col.name,
-              collectionLabel: col.label,
+              collectionLabel: label,
               title: String(record[col.titleField] ?? ''),
               subtitle: String(record[col.subtitleField] ?? ''),
               link: col.link,
             }))
-            return { label: col.label, link: col.link, items }
+            return { label, link: col.link, items }
           } catch {
-            return { label: col.label, link: col.link, items: [] }
+            return { label, link: col.link, items: [] }
           }
         }),
       )

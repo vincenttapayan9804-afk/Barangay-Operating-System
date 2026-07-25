@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router'
 import Layout from '@/components/Layout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import LoginPage from '@/auth/LoginPage'
 import LandingPage from '@/pages/LandingPage'
 import Dashboard from '@/pages/Dashboard'
-import PlatformAdmin from '@/pages/PlatformAdmin'
+import VerifyDocumentPage from '@/pages/VerifyDocumentPage'
 import { verifyAuth } from '@/auth/session'
 
 function RootGate() {
@@ -19,24 +19,38 @@ function RootGate() {
   if (state === 'authenticated') return <Navigate to="/dashboard" replace />
   return <LandingPage />
 }
-import { RecordsPage } from '@/features/records'
-import { ResidentsPage } from '@/features/residents'
-import { HouseholdsPage } from '@/features/households'
-import { DeceasedRecordsPage } from '@/features/deceased'
-import { DocumentsPage, ReleasePage } from '@/features/documents'
-import { SystemSettings } from '@/features/settings'
-import { ActivityPage, VisitorLogPage } from '@/features/logs'
-import { AssetsPage } from '@/features/assets'
-import { CalendarPage } from '@/features/calendar'
-import { AgendaPage } from '@/features/agenda'
-import { ReportsPage } from '@/features/reports'
-import { BudgetOverview, RevenueTracking, FundSources, Disbursements, FinanceAudit, Appropriations } from '@/features/finance'
+
+// Everything below is code-split per feature so a viewer-role user loading
+// /dashboard doesn't also pay for finance, reports, and admin bundles.
+const PlatformAdmin = lazy(() => import('@/pages/PlatformAdmin'))
+const RecordsPage = lazy(() => import('@/features/records/RecordsPage'))
+const ResidentsPage = lazy(() => import('@/features/residents/ResidentsPage'))
+const HouseholdsPage = lazy(() => import('@/features/households/HouseholdsPage'))
+const DeceasedRecordsPage = lazy(() => import('@/features/deceased/DeceasedRecordsPage'))
+const DocumentsPage = lazy(() => import('@/features/documents/DocumentsPage'))
+const ReleasePage = lazy(() => import('@/features/documents/ReleasePage'))
+const SystemSettings = lazy(() => import('@/features/settings/SystemSettings'))
+const ActivityPage = lazy(() => import('@/features/logs/ActivityPage'))
+const VisitorLogPage = lazy(() => import('@/features/logs/VisitorLogPage'))
+const AssetsPage = lazy(() => import('@/features/assets/AssetsPage'))
+const CalendarPage = lazy(() => import('@/features/calendar/CalendarPage'))
+const AgendaPage = lazy(() => import('@/features/agenda/AgendaPage'))
+const ReportsPage = lazy(() => import('@/features/reports/ReportsPage'))
+const BudgetOverview = lazy(() => import('@/features/finance/BudgetOverview').then((m) => ({ default: m.BudgetOverview })))
+const Appropriations = lazy(() => import('@/features/finance/Appropriations').then((m) => ({ default: m.Appropriations })))
+const RevenueTracking = lazy(() => import('@/features/finance/RevenueTracking').then((m) => ({ default: m.RevenueTracking })))
+const FundSources = lazy(() => import('@/features/finance/FundSources').then((m) => ({ default: m.FundSources })))
+const Disbursements = lazy(() => import('@/features/finance/Disbursements').then((m) => ({ default: m.Disbursements })))
+const FinanceAudit = lazy(() => import('@/features/finance/FinanceAudit').then((m) => ({ default: m.FinanceAudit })))
 
 export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<RootGate />} />
       <Route path="/login" element={<LoginPage />} />
+      {/* Public — no auth required. Reached by scanning the QR code printed
+          on a released document certificate (see certificatePdf.ts). */}
+      <Route path="/verify/:id" element={<VerifyDocumentPage />} />
       <Route
         element={
           <ProtectedRoute>

@@ -1,8 +1,11 @@
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router'
-import { Plus, ChevronDown, FileText, Clock, User, CheckCircle2, RotateCcw, Ban, DollarSign } from 'lucide-react'
+import { Plus, ChevronDown, FileText, Clock, User, CheckCircle2, RotateCcw, Ban, DollarSign, Download } from 'lucide-react'
 import { getDocuments, createDocument, updateDocument, deleteDocument, getDailyQueueNumber, type ApiDocument } from '@/api/documents'
+import { useRealtimeCollection } from '@/hooks/useRealtimeCollection'
+import { getAllSettings } from '@/api/settings'
+import { toast } from '@/lib/toast'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Input } from '@/components/ui/input'
@@ -66,12 +69,20 @@ export default function DocumentsPage() {
   const [flyoutDoc, setFlyoutDoc] = useState<ApiDocument | null>(null)
   
 
-  useEffect(() => {
-    getDocuments()
+  function loadDocs() {
+    return getDocuments()
       .then(setDocs)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load data'))
-      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    loadDocs().finally(() => setLoading(false))
   }, [])
+
+  // Live-updates the queue when another staff session creates/edits/releases
+  // a request, without re-triggering the loading spinner.
+  useRealtimeCollection('document_requests', loadDocs)
 
   const [searchParams] = useSearchParams()
   const selectedId = searchParams.get('selected')
@@ -150,6 +161,32 @@ export default function DocumentsPage() {
 
   function handleDelete(id: string) {
     setDeletingId(id)
+  }
+
+  const [downloadingCertId, setDownloadingCertId] = useState<string | null>(null)
+
+  async function handleDownloadCertificate(record: ApiDocument) {
+    setDownloadingCertId(record.id)
+    try {
+      // pdf-lib + qrcode are ~450KB — only worth loading once someone
+      // actually asks for a certificate, not on every document queue visit.
+      const [{ generateCertificatePdf, downloadCertificatePdf }, settings] = await Promise.all([
+        import('@/lib/certificatePdf'),
+        getAllSettings(),
+      ])
+      const blob = await generateCertificatePdf(record, {
+        barangayName: settings.barangay_name || 'Barangay',
+        municipalityCity: settings.municipality_city || '',
+        province: settings.province || '',
+        region: settings.region || '',
+        barangayCaptain: settings.barangay_captain || '',
+      })
+      downloadCertificatePdf(blob, record)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate certificate')
+    } finally {
+      setDownloadingCertId(null)
+    }
   }
 
   async function confirmDelete() {
@@ -390,6 +427,24 @@ export default function DocumentsPage() {
             {flyoutDoc.notes && (
               <DetailSection title="Notes">
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{flyoutDoc.notes}</p>
+              </DetailSection>
+            )}
+
+            {canModify && (flyoutDoc.status === 'for_release' || flyoutDoc.status === 'released') && (
+              <DetailSection icon={<FileText className="size-3" />} title="Certificate">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={downloadingCertId === flyoutDoc.id}
+                  onClick={() => handleDownloadCertificate(flyoutDoc)}
+                >
+                  <Download className="size-3.5" />
+                  {downloadingCertId === flyoutDoc.id ? 'Generating…' : 'Download Certificate'}
+                </Button>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Includes a QR code recipients can scan to verify authenticity.
+                </p>
               </DetailSection>
             )}
 
