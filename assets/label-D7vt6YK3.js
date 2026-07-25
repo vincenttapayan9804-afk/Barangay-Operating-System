@@ -1,0 +1,1 @@
+import{o as e}from"./rolldown-runtime-DAXXjFlN.js";import{r as t,s as n,u as r}from"./errorHandler-O5zxleTS.js";var i=e(r(),1),a=n(),o=(0,i.forwardRef)(({className:e,...n},r)=>(0,a.jsx)(`label`,{ref:r,className:t(`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70`,e),...n}));o.displayName=`Label`;export{o as t};
