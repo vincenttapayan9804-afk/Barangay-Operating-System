@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import OfflineIndicator from '@/offline/OfflineIndicator'
 import { Toaster } from '@/components/ui/toast'
 import { getAllSettings } from '@/api/settings'
+import { ClustrMark } from '@/components/ClustrLogo'
 
 const STORAGE_KEY = 'barangayos-sidebar-pinned'
 
@@ -54,12 +55,8 @@ export default function Layout() {
         >
           <Menu className="size-5" />
         </button>
-        <img
-          src={`${import.meta.env.BASE_URL}icon-logo.png`}
-          alt="BarangayOS"
-          className="size-8 shrink-0 rounded-md object-contain"
-        />
-        <span className="font-display text-sm font-semibold">BarangayOS</span>
+        <ClustrMark className="size-8 shrink-0" />
+        <span className="font-display text-sm font-semibold">CLUSTR</span>
       </header>
 
       <Sidebar pinned={pinned} onTogglePin={togglePinned} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen} />

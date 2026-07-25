@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { getCurrentUser, logout, type Role } from '@/auth/session'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { ClustrMark } from '@/components/ClustrLogo'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
@@ -220,13 +221,9 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
         )}>
           {(pinned || mobileOpen) ? (
             <>
-              <img
-                src={`${import.meta.env.BASE_URL}icon-logo.png`}
-                alt="BarangayOS"
-                className="size-8 shrink-0 rounded-md object-contain"
-              />
+              <ClustrMark className="size-8 shrink-0" />
               <span className="font-display min-w-0 flex-1 truncate text-sm font-semibold text-sidebar-foreground">
-                B-OS v1.0.1
+                CLUSTR v1.0.1
               </span>
               {pinned && !mobileOpen && (
                 <button

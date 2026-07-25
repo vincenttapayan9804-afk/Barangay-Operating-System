@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { AlertCircle, Eye, EyeOff, User, ShieldCheck } from 'lucide-react'
 import { login, requestLoginOtp, completeMfaLogin } from './session'
+import { ClustrMark } from '@/components/ClustrLogo'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -84,8 +85,9 @@ export default function LoginPage() {
         />
 
         {/* Brand mark on mobile — overlaid on illustration */}
-        <div className="absolute left-6 top-6 z-20 lg:hidden">
-          <img src={`${import.meta.env.BASE_URL}standard-logo.png`} alt="" className="h-10 w-auto object-contain" />
+        <div className="absolute left-6 top-6 z-20 flex items-center gap-2 lg:hidden">
+          <ClustrMark className="size-8" />
+          <span className="font-display text-base font-bold tracking-tight text-white">CLUSTR</span>
         </div>
 
         {/* Illustration — fills the entire panel */}
@@ -109,16 +111,15 @@ export default function LoginPage() {
         <div className="w-full max-w-sm motion-fade-in motion-slide-up">
           {/* Branding */}
           <div className="text-center">
-            <img
-              src={`${import.meta.env.BASE_URL}standard-logo.png`}
-              alt="BarangayOS"
-              className="mx-auto w-full max-w-xs object-contain"
-            />
+            <div className="flex items-center justify-center gap-2.5">
+              <ClustrMark className="size-10" />
+              <span className="font-display text-2xl font-bold tracking-tight text-gray-900">CLUSTR</span>
+            </div>
             <p className="mt-4 font-display text-sm font-semibold uppercase tracking-[0.2em] text-narra">
               {greeting}
             </p>
             <p className="mt-1 font-display text-sm text-gray-500">
-              Barangay Records Management System
+              Barangay Operating System
             </p>
           </div>
 

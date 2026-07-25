@@ -44,6 +44,15 @@
   --color-accent-rose: var(--accent-rose);
   --color-accent-amber: var(--accent-amber);
 
+  /* CLUSTR marketing palette — scoped to the landing page. Kept separate
+     from the app's barangay/gold/teal tokens above so the in-app dashboard
+     theme is untouched. */
+  --color-mint: var(--mint);
+  --color-mint-deep: var(--mint-deep);
+  --color-mint-soft: var(--mint-soft);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+
   --font-display: 'Outfit', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -170,6 +179,12 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
   --sidebar-border: #162434;
   --surface-overlay: rgba(0, 0, 0, 0.4);
   --text-subtle: #A09688;
+
+  --mint: #00D9A3;
+  --mint-deep: #009E77;
+  --mint-soft: #E9FBF5;
+  --ink: #06110D;
+  --paper: #F6FCFA;
 }
 
 .dark {
@@ -216,6 +231,12 @@ a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
   --sidebar-border: #162434;
   --surface-overlay: rgba(0, 0, 0, 0.6);
   --text-subtle: #7A7064;
+
+  --mint: #00E6AF;
+  --mint-deep: #00B389;
+  --mint-soft: #0C1F19;
+  --ink: #040B08;
+  --paper: #0A0F0D;
 }
 
 .dark .elevated {

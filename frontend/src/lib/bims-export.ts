@@ -353,7 +353,7 @@ ${migrants.length === 0 ? `
 </div>
 
 <div class="footer">
-  <strong>BarangayOS</strong> — LGUSS-BIMS Compliant | Generated ${esc(today)}
+  <strong>CLUSTR</strong> — LGUSS-BIMS Compliant | Generated ${esc(today)}
   <br>This form complies with DILG Memorandum Circular No. 2025-104
 </div>
 
