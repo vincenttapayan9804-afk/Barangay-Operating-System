@@ -1,0 +1,73 @@
+# Logs
+logs/
+!frontend/src/features/logs/
+!frontend/src/features/logs/**
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build output
+frontend/dist
+frontend/dist-ssr
+
+# Environment
+*.local
+.env.local
+.env.production
+
+# Editor directories and files
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Test coverage
+coverage/
+
+# PocketBase
+backend/pb_data/
+backend/pocketbase-service.exe
+backend/pocketbase-service.xml
+
+# Runtime output
+pb_err.txt
+pb_out.txt
+
+# AI agent / tooling artifacts
+.superpowers/
+.opencode/
+docs/superpowers/
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.auth/
+playwright/.auth/*.json
+!playwright/.auth/.gitkeep
+
+
+
+# Production staging area (DO NOT COMMIT)
+prod/
+
+# LAN HTTPS certificates (generated locally)
+backend/certs/
+
+# Claude Code
+.claude/
+package-lock.json
+

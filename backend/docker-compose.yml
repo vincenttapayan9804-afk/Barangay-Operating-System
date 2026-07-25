@@ -1,0 +1,40 @@
+services:
+  pocketbase:
+    build: .
+    container_name: barangay-pocketbase
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - pb_data:/pb/pb_data
+    environment:
+      - GOMEMLIMIT=512MiB
+    command: >
+      /pb/pocketbase serve
+      --http=0.0.0.0:8090
+      --dir=/pb/pb_data
+      --migrationsDir=/pb/pb_migrations
+      --automigrate
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        VITE_LOCAL_API_URL: ${VITE_LOCAL_API_URL:-}
+        VITE_CLOUDINARY_CLOUD_NAME: ${VITE_CLOUDINARY_CLOUD_NAME:-}
+        VITE_CLOUDINARY_UPLOAD_PRESET: ${VITE_CLOUDINARY_UPLOAD_PRESET:-}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-}
+    container_name: barangay-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    # Mount custom mkcert certs (run scripts/generate-certs.ps1 first)
+    volumes: [ "./certs:/etc/nginx/certs" ]
+    depends_on:
+      - pocketbase
+
+volumes:
+  pb_data:

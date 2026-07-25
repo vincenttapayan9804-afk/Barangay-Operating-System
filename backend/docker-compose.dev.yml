@@ -1,0 +1,20 @@
+services:
+  pocketbase-dev:
+    build: .
+    container_name: barangay-pocketbase-dev
+    restart: unless-stopped
+    ports:
+      - "8091:8090"
+    volumes:
+      - pb_data_dev:/pb/pb_data
+    environment:
+      - GOMEMLIMIT=512MiB
+    command: >
+      /pb/pocketbase serve
+      --http=0.0.0.0:8090
+      --dir=/pb/pb_data
+      --migrationsDir=/pb/pb_migrations
+      --automigrate
+
+volumes:
+  pb_data_dev:
