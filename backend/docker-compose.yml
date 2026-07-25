@@ -38,6 +38,26 @@ services:
       - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY:-}
     command: replicate -config /etc/litestream.yml
 
+  # WebAuthn/passkey sidecar. PocketBase has no native WebAuthn support, so
+  # this small service owns the attestation/assertion cryptography (via
+  # @simplewebauthn/server) and mints real PocketBase sessions (via the
+  # superuser impersonate API) once a passkey ceremony verifies. No-op /
+  # fails to start until PB_SUPERUSER_* below are set — see
+  # docs/DEPLOYMENT.md "Passkey sign-in (WebAuthn)".
+  webauthn:
+    build: ./webauthn-service
+    container_name: barangay-webauthn
+    restart: unless-stopped
+    depends_on:
+      - pocketbase
+    environment:
+      - PB_URL=http://pocketbase:8090
+      - PB_SUPERUSER_EMAIL=${PB_SUPERUSER_EMAIL:-}
+      - PB_SUPERUSER_PASSWORD=${PB_SUPERUSER_PASSWORD:-}
+      - RP_ID=${WEBAUTHN_RP_ID:-localhost}
+      - RP_NAME=${WEBAUTHN_RP_NAME:-CLUSTR Barangay OS}
+      - WEBAUTHN_ORIGINS=${WEBAUTHN_ORIGINS:-http://localhost:8080}
+
   frontend:
     build:
       context: ../frontend
@@ -58,6 +78,7 @@ services:
     volumes: [ "./certs:/etc/nginx/certs" ]
     depends_on:
       - pocketbase
+      - webauthn
 
 volumes:
   pb_data:

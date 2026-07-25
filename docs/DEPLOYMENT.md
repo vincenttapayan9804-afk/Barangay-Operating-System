@@ -488,6 +488,39 @@ with 2-3 active staff each during a rush is a `CONCURRENCY` of 100-150, not 50.
 
 ---
 
+### Step 8: Passkey sign-in (WebAuthn)
+
+Optional. Lets staff sign in with a fingerprint, face scan, or security key instead of a
+password. PocketBase has no native WebAuthn support, so a small sidecar service
+(`backend/webauthn-service/`) handles the actual attestation/assertion cryptography using the
+[`@simplewebauthn/server`](https://simplewebauthn.dev/) library, and mints a real PocketBase
+session (via the superuser impersonate API) once a passkey ceremony verifies. It's already wired
+into `backend/docker-compose.yml` and proxied at `/api/webauthn/` by nginx — it just needs a few
+environment variables set:
+
+1. Create a dedicated superuser account for the service (don't reuse your personal admin login):
+   in the PocketBase dashboard (`/_/`) → Settings → Superusers → create one, e.g.
+   `webauthn-service@yourdomain.com` with a long random password.
+2. Add to `.env`:
+   ```bash
+   PB_SUPERUSER_EMAIL=webauthn-service@yourdomain.com
+   PB_SUPERUSER_PASSWORD=<the long random password above>
+   WEBAUTHN_RP_ID=records.yourdomain.com      # your real domain, no scheme/port
+   WEBAUTHN_RP_NAME=CLUSTR Barangay OS
+   WEBAUTHN_ORIGINS=https://records.yourdomain.com
+   ```
+   `WEBAUTHN_RP_ID` must be a valid domain (or `localhost` for local dev/testing) — passkeys are
+   bound to it and won't work if it's wrong or changes later. `WEBAUTHN_ORIGINS` must exactly
+   match the origin(s) the app is actually served from (scheme + host + port); comma-separate if
+   there's more than one (e.g. a LAN address alongside the tunnel domain).
+3. `docker compose up -d --build webauthn` (or just redeploy — it's part of the normal
+   `docker compose up -d --build` flow like every other service).
+4. Staff can now add a passkey from Settings → Passkeys, and sign in with "Sign in with a
+   passkey" on the login screen. Nothing changes for accounts that don't register one — password
+   (+ MFA for admins) keeps working exactly as before.
+
+---
+
 ## Option B: Direct HTTPS (Without Cloudflare Tunnel)
 
 If your server has a public IP address and you prefer not to use Cloudflare:

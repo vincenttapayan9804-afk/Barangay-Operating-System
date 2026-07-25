@@ -40,6 +40,8 @@ We take security vulnerabilities seriously. If you discover a security issue, **
 ### Authentication
 
 - **Password-based auth** managed by PocketBase with bcrypt password hashing
+- **Passkeys (WebAuthn)** — optional passwordless sign-in via `backend/webauthn-service/`, a sidecar that owns the attestation/assertion cryptography (PocketBase has no native WebAuthn support) and mints a real session via PocketBase's superuser impersonate API once a ceremony verifies. See `docs/DEPLOYMENT.md` "Passkey sign-in (WebAuthn)".
+- **MFA** — admin accounts require password + emailed one-time code (PocketBase's built-in MFA, `backend/pb_migrations/1785000029_admin_mfa.js`)
 - **Session tokens** stored in PocketBase's `LocalAuthStore` (persisted to `window.localStorage` under key `pocketbase_auth` by default, for session persistence across page loads). Be aware this means tokens are accessible to JavaScript — implement Content Security Policy headers and keep dependencies audited to mitigate XSS risks.
 - **Rate limiting** configurable via PocketBase admin UI or JS hooks to prevent brute-force attacks
 - **Session expiry** — Tokens expire and users are redirected to login automatically

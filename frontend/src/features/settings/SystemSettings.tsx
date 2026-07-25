@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { AVAILABLE_COLLECTIONS, seedCollections, eraseCollections } from './demoData'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { toast as showToast } from '@/lib/toast'
+import { PasskeySettings } from './PasskeySettings'
 
 interface TagInputProps {
   items: string[]
@@ -490,6 +491,8 @@ export default function SystemSettings() {
             )}
           </div>
         </section>
+
+        <PasskeySettings />
       </div>
 
       {toast && (

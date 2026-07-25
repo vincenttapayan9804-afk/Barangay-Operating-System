@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2 } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2, KeyRound } from 'lucide-react'
 import { login, requestLoginOtp, completeMfaLogin } from './session'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { getClient } from '@/api/client'
-import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, type DemoAccount } from '@/lib/demoAccounts'
+import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, isDemoModeEnabled, type DemoAccount } from '@/lib/demoAccounts'
 import { ensureDemoSeeded } from '@/lib/demoSeed'
+import { browserSupportsWebAuthn, loginWithPasskey } from '@/lib/webauthn'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -39,6 +40,13 @@ export default function LoginPage() {
   const [suName, setSuName] = useState('')
   const [suEmail, setSuEmail] = useState('')
   const [suPassword, setSuPassword] = useState('')
+
+  // Passwordless sign-in with a previously registered passkey (see
+  // Settings > Passkeys). Not available in demo mode — there's no backend
+  // to run the WebAuthn ceremony against.
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [passkeyError, setPasskeyError] = useState('')
+  const passkeyAvailable = !isDemoModeEnabled() && browserSupportsWebAuthn()
 
   async function handleDemoLogin(account: DemoAccount) {
     setDemoError('')
@@ -132,6 +140,23 @@ export default function LoginPage() {
       setOtpId(otp.otpId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend code')
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    setPasskeyError('')
+    if (!email) {
+      setPasskeyError('Enter your email above first, then tap "Sign in with a passkey".')
+      return
+    }
+    setPasskeyLoading(true)
+    try {
+      await loginWithPasskey(email)
+      navigate('/dashboard')
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : 'Could not sign in with a passkey')
+    } finally {
+      setPasskeyLoading(false)
     }
   }
 
@@ -302,6 +327,30 @@ export default function LoginPage() {
                     'Login'
                   )}
                 </button>
+
+                {passkeyAvailable && (
+                  <>
+                    {passkeyError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
+                        <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                        <span>{passkeyError}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handlePasskeyLogin}
+                      disabled={passkeyLoading}
+                      className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-3.5 font-display text-sm font-semibold text-gray-700 shadow-sm transition-all duration-200 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {passkeyLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <KeyRound className="size-4" />
+                      )}
+                      Sign in with a passkey
+                    </button>
+                  </>
+                )}
               </form>
             )}
           </div>
