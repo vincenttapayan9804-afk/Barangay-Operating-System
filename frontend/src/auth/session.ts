@@ -1,3 +1,4 @@
+import { ClientResponseError } from 'pocketbase'
 import { getClient } from '@/api/client'
 
 export type Role = 'admin' | 'staff' | 'viewer'
@@ -8,6 +9,7 @@ export interface AuthUser {
   role: Role
   name?: string
   barangay_id: string
+  is_platform_admin?: boolean
 }
 
 export function getCurrentUser(): AuthUser | null {
@@ -23,7 +25,12 @@ export function getCurrentUser(): AuthUser | null {
     role: record.role as Role,
     name: record.name as string | undefined,
     barangay_id: record.barangay_id as string,
+    is_platform_admin: record.is_platform_admin as boolean | undefined,
   }
+}
+
+export function isPlatformAdmin(): boolean {
+  return getCurrentUser()?.is_platform_admin === true
 }
 
 export function isAuthenticated(): boolean {
@@ -48,8 +55,33 @@ export function hasRole(...roles: Role[]): boolean {
   return roles.includes(user.role)
 }
 
-export function login(email: string, password: string) {
-  return getClient().collection('users').authWithPassword(email, password)
+// Admin accounts require a second factor (see 1785000029_admin_mfa.js). When
+// that's the case, the first password call fails with a 401 whose body is
+// `{ mfaId }` instead of a normal error — that's not a failed login, it's a
+// request to complete the next step. Non-admin accounts (mfa.rule doesn't
+// match) log in normally on the first call.
+export interface MfaRequired {
+  mfaRequired: true
+  mfaId: string
+}
+
+export async function login(email: string, password: string): Promise<MfaRequired | { mfaRequired: false }> {
+  try {
+    await getClient().collection('users').authWithPassword(email, password)
+    return { mfaRequired: false }
+  } catch (err) {
+    const mfaId = err instanceof ClientResponseError ? (err.data as { mfaId?: string })?.mfaId : undefined
+    if (mfaId) return { mfaRequired: true, mfaId }
+    throw err
+  }
+}
+
+export function requestLoginOtp(email: string) {
+  return getClient().collection('users').requestOTP(email)
+}
+
+export function completeMfaLogin(otpId: string, code: string, mfaId: string) {
+  return getClient().collection('users').authWithOTP(otpId, code, { mfaId })
 }
 
 export function logout(): void {

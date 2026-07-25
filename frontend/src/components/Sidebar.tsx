@@ -23,6 +23,7 @@ import {
   ArrowUpFromLine,
   ScrollText,
   Download,
+  Building2,
 } from 'lucide-react'
 import { getCurrentUser, logout, type Role } from '@/auth/session'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -35,6 +36,7 @@ interface NavItem {
   label: string
   icon: React.ComponentType<{ className?: string }>
   roles: Role[]
+  platformAdminOnly?: boolean
 }
 
 const navGroups: { label: string; items: NavItem[] }[] = [
@@ -91,6 +93,12 @@ const navGroups: { label: string; items: NavItem[] }[] = [
       { to: '/assets', label: 'Assets', icon: Package, roles: ['admin'] },
       { to: '/logs/activity', label: 'Audit Logs', icon: ClipboardCheck, roles: ['admin', 'staff'] },
       { to: '/settings', label: 'System Settings', icon: Settings, roles: ['admin'] },
+    ],
+  },
+  {
+    label: 'Platform',
+    items: [
+      { to: '/platform-admin', label: 'Onboard Barangays', icon: Building2, roles: [], platformAdminOnly: true },
     ],
   },
 ]
@@ -250,7 +258,9 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
         <nav className="sidebar-scroll flex-1 overflow-y-auto py-4">
           <div className={cn('space-y-6', pinned ? 'px-3' : 'px-2')}>
             {navGroups.map((group) => {
-              const visibleItems = group.items.filter((item) => user && item.roles.includes(user.role))
+              const visibleItems = group.items.filter(
+                (item) => user && (item.platformAdminOnly ? user.is_platform_admin : item.roles.includes(user.role)),
+              )
               if (visibleItems.length === 0) return null
 
               return (

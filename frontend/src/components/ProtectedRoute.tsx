@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
-import { verifyAuth, hasRole, type Role } from '@/auth/session'
+import { verifyAuth, hasRole, isPlatformAdmin, type Role } from '@/auth/session'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
   roles?: Role[]
+  requirePlatformAdmin?: boolean
 }
 
-export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, roles, requirePlatformAdmin }: ProtectedRouteProps) {
   const [state, setState] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading')
 
   useEffect(() => {
@@ -23,5 +24,6 @@ export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
   if (state === 'loading') return null
   if (state === 'unauthenticated') return <Navigate to="/login" replace />
   if (roles && !hasRole(...roles)) return <Navigate to="/dashboard" replace />
+  if (requirePlatformAdmin && !isPlatformAdmin()) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }

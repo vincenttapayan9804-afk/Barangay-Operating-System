@@ -120,3 +120,36 @@ jobs:
       - name: npm audit
         run: npm audit --audit-level=high
 
+  tenant-isolation:
+    name: Tenant Isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PB_VERSION: '0.39.5'
+      PB_URL: http://127.0.0.1:8090
+      PB_SUPERUSER_EMAIL: admin@e2e.local
+      PB_SUPERUSER_PASSWORD: E2eAdmin123!
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download PocketBase
+        run: |
+          curl -sL -o /tmp/pb.zip "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip"
+          unzip -q /tmp/pb.zip -d /tmp/pb
+      - name: Apply migrations + create test superuser
+        run: /tmp/pb/pocketbase superuser upsert "$PB_SUPERUSER_EMAIL" "$PB_SUPERUSER_PASSWORD" --dir=/tmp/pb_data --migrationsDir=pb_migrations --automigrate
+      - name: Start PocketBase
+        run: |
+          /tmp/pb/pocketbase serve --http=127.0.0.1:8090 --dir=/tmp/pb_data --migrationsDir=pb_migrations --automigrate > /tmp/pb_server.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8090/api/health && break
+            sleep 1
+          done
+      - name: Run tenant isolation checks
+        run: node scripts/test-tenant-isolation.mjs
+      - name: Show PocketBase log on failure
+        if: failure()
+        run: cat /tmp/pb_server.log || true
+

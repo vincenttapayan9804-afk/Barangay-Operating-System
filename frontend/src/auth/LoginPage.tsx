@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertCircle, Eye, EyeOff, User } from 'lucide-react'
-import { login } from './session'
+import { AlertCircle, Eye, EyeOff, User, ShieldCheck } from 'lucide-react'
+import { login, requestLoginOtp, completeMfaLogin } from './session'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -19,18 +19,56 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [greeting] = useState(getGreeting)
 
+  // Second-factor step — only entered for admin accounts (see
+  // 1785000029_admin_mfa.js). mfaId identifies the in-progress login;
+  // otpId identifies the emailed one-time code the user is entering.
+  const [mfaId, setMfaId] = useState('')
+  const [otpId, setOtpId] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
 
     try {
-      await login(email, password)
-      navigate('/dashboard')
+      const result = await login(email, password)
+      if (result.mfaRequired) {
+        const otp = await requestLoginOtp(email)
+        setMfaId(result.mfaId)
+        setOtpId(otp.otpId)
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleMfaSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      await completeMfaLogin(otpId, otpCode, mfaId)
+      navigate('/dashboard')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid or expired code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleResendCode() {
+    setError('')
+    try {
+      const otp = await requestLoginOtp(email)
+      setOtpId(otp.otpId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend code')
     }
   }
 
@@ -86,75 +124,123 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="mt-10">
-            
-
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              {/* Email field */}
-              <div className="relative">
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="Email address"
-                  autoComplete="email"
-                  className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
-                />
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  <User className="size-4" />
+            {mfaId ? (
+              <form onSubmit={handleMfaSubmit} className="mt-6 space-y-4">
+                <div className="flex items-start gap-2 rounded-xl border border-barangay/20 bg-barangay/5 px-4 py-3 font-display text-sm text-barangay">
+                  <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+                  <span>We emailed a verification code to {email}. Enter it below to finish signing in.</span>
                 </div>
-              </div>
 
-              {/* Password field */}
-              <div className="relative">
                 <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="otp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
                   required
-                  placeholder="Password"
-                  autoComplete="current-password"
-                  className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
+                  autoFocus
+                  placeholder="Verification code"
+                  className="w-full rounded-xl bg-gray-100 px-4 py-3.5 font-display text-sm tracking-widest text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
                 />
+
+                {error && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#0D1F2D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#0D1F2D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2 font-display">
+                      <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Verifying...
+                    </span>
+                  ) : (
+                    'Verify and sign in'
+                  )}
+                </button>
+
                 <button
                   type="button"
-                  onClick={() => setShowPassword((p) => !p)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
-                  tabIndex={-1}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={handleResendCode}
+                  className="w-full font-display text-xs font-medium text-gray-500 underline transition-colors hover:text-gray-600"
                 >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  Resend code
                 </button>
-              </div>
-
-              
-
-              {/* Error */}
-              {error && (
-                <div className="flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
-                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                  <span>{error}</span>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+                {/* Email field */}
+                <div className="relative">
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="Email address"
+                    autoComplete="email"
+                    className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
+                  />
+                  <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                    <User className="size-4" />
+                  </div>
                 </div>
-              )}
 
-              {/* Login button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-full bg-gradient-to-r from-barangay to-[#0D1F2D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#0D1F2D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2 font-display">
-                    <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Signing in...
-                  </span>
-                ) : (
-                  'Login'
+                {/* Password field */}
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="Password"
+                    autoComplete="current-password"
+                    className="w-full rounded-xl bg-gray-100 px-4 py-3.5 pr-11 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-barangay/25"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-gray-600"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
                 )}
-              </button>
-            </form>
+
+                {/* Login button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-full bg-gradient-to-r from-barangay to-[#0D1F2D] px-4 py-3.5 font-display text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-[#0D1F2D] hover:to-barangay hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barangay/50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2 font-display">
+                      <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Signing in...
+                    </span>
+                  ) : (
+                    'Login'
+                  )}
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Footer */}

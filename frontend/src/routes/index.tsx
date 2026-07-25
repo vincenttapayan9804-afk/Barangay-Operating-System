@@ -5,6 +5,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import LoginPage from '@/auth/LoginPage'
 import LandingPage from '@/pages/LandingPage'
 import Dashboard from '@/pages/Dashboard'
+import PlatformAdmin from '@/pages/PlatformAdmin'
 import { verifyAuth } from '@/auth/session'
 
 function RootGate() {
@@ -44,6 +45,14 @@ export default function AppRoutes() {
         }
       >
         <Route path="dashboard" element={<Dashboard />} />
+        <Route
+          path="platform-admin"
+          element={
+            <ProtectedRoute requirePlatformAdmin>
+              <PlatformAdmin />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="records"
           element={

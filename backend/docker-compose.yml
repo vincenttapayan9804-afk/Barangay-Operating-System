@@ -16,6 +16,28 @@ services:
       --migrationsDir=/pb/pb_migrations
       --automigrate
 
+  # Continuous SQLite backup to S3-compatible storage (R2, Oracle Object
+  # Storage, etc.). Streams the WAL in near-real-time instead of relying on
+  # periodic full-snapshot backups, so a lost volume costs seconds of data,
+  # not minutes. No-op / fails to start until the LITESTREAM_* vars below are
+  # set — see docs/DEPLOYMENT.md "Continuous backups (Litestream)".
+  litestream:
+    image: litestream/litestream:0.3
+    container_name: barangay-litestream
+    restart: unless-stopped
+    depends_on:
+      - pocketbase
+    volumes:
+      - pb_data:/pb/pb_data:ro
+      - ./litestream.yml:/etc/litestream.yml:ro
+    environment:
+      - LITESTREAM_BUCKET=${LITESTREAM_BUCKET:-}
+      - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT:-}
+      - LITESTREAM_REGION=${LITESTREAM_REGION:-auto}
+      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID:-}
+      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY:-}
+    command: replicate -config /etc/litestream.yml
+
   frontend:
     build:
       context: ../frontend
@@ -26,6 +48,7 @@ services:
         VITE_CLOUDINARY_CLOUD_NAME: ${VITE_CLOUDINARY_CLOUD_NAME:-}
         VITE_CLOUDINARY_UPLOAD_PRESET: ${VITE_CLOUDINARY_UPLOAD_PRESET:-}
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     container_name: barangay-frontend
     restart: unless-stopped
     ports:

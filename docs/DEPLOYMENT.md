@@ -47,6 +47,21 @@ The nginx container serves the SPA and proxies `/api/*` and `/_/*` to PocketBase
 - Router assigns a **static LAN IP** (DHCP reservation recommended)
 - **Docker Desktop** (Windows) or **Docker Engine** (Linux) installed
 
+#### Which machine, on a $0 budget
+
+The platform now serves multiple barangays from one shared backend, so its uptime is
+everyone's uptime — that pushes the "server" above from "any PC in the office" toward
+something with real cloud reliability, without necessarily paying for it:
+
+| Option | Cost | Uptime | Notes |
+|--------|------|--------|-------|
+| **Oracle Cloud "Always Free" (Ampere A1)** — recommended | $0, permanently | Real cloud SLA | Up to 4 OCPU / 24GB RAM free forever (not a 12-month trial like AWS/GCP). Requires a card for identity verification (no charge). Treat the same as any other Docker host below — install Docker, `git pull`, `docker compose up -d --build`. |
+| Self-hosted PC + Cloudflare Tunnel (documented below) | $0 | Only as good as your own power/internet | Fine to start with or run alongside Oracle as a second replica later; not a substitute for real uptime once you're carrying multiple barangays' data. |
+| Paid VPS (Hetzner, DigitalOcean, Vultr) | ~$5-6/mo | Real cloud SLA | Only worth paying for once Oracle's free-tier limits are actually hit — don't pre-pay for headroom you don't need yet. |
+
+Whichever host you pick, the rest of this guide (Docker Compose stack, Cloudflare Tunnel,
+backups) is identical — none of it assumes a specific provider.
+
 ### Software to Install
 
 | Software | Purpose |
@@ -300,16 +315,57 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and 
 
 ### Step 5: Database Backup
 
-Backups are configured through the PocketBase Admin UI — no separate backup tool needed.
+Two backup mechanisms are available. **Use Litestream as the primary mechanism** — it
+streams every write continuously, so a lost or corrupted volume costs seconds of data,
+not the minutes between periodic snapshots. The PocketBase Admin UI's built-in backup
+(below) is a fine secondary/manual snapshot to keep enabled alongside it, but shouldn't
+be your only line of defense.
 
-#### 5a. Configure backups
+#### 5a. Continuous backups (Litestream) — recommended
+
+A `litestream` sidecar container is already wired into `backend/docker-compose.yml`; it
+just needs credentials for any S3-compatible bucket (Cloudflare R2, Oracle Object
+Storage, AWS S3, ...).
+
+1. Create a bucket (e.g. `barangay-db-backup`) with your storage provider
+2. Create an access key scoped to that bucket (R2: **R2 → Manage API Tokens → Object
+   Read & Write**; Oracle: **Object Storage → Customer Secret Keys**)
+3. Set these in `backend/.env` (see `backend/.env.example`):
+
+   ```env
+   LITESTREAM_BUCKET=barangay-db-backup
+   LITESTREAM_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+   LITESTREAM_REGION=auto
+   LITESTREAM_ACCESS_KEY_ID=your-access-key-id
+   LITESTREAM_SECRET_ACCESS_KEY=your-secret-access-key
+   ```
+
+4. `docker compose up -d --build` — the `litestream` container starts replicating
+   `data.db` and `auxiliary.db` continuously (10s sync interval, 7-day retention)
+5. Verify: `docker compose logs litestream` should show periodic `"replicating to..."`
+   activity with no errors, and the configured bucket should start filling with
+   `generations/` objects within a minute
+
+**Restoring from a Litestream backup** (disaster recovery — test this before you need it):
+
+```bash
+docker compose stop pocketbase
+docker run --rm -v barangay_pb_data:/pb/pb_data -v $(pwd)/litestream.yml:/etc/litestream.yml \
+  --env-file .env litestream/litestream:0.3 restore -config /etc/litestream.yml -o /pb/pb_data/data.db /pb/pb_data/data.db
+docker compose start pocketbase
+```
+
+Run this against a scratch volume first to confirm the procedure actually works — an
+untested backup is not a backup.
+
+#### 5b. Periodic snapshot backups (PocketBase Admin UI) — secondary
 
 1. Visit `http://localhost:8090/_/` and log in as admin
 2. Go to **Settings** → **Backups**
 3. Enable **Automatic backups**
 4. Set interval to **5 minutes** (or your preferred interval)
 
-#### 5b. Configure Cloudflare R2 (or any S3-compatible storage)
+#### 5c. Configure Cloudflare R2 for the Admin UI backups (or any S3-compatible storage)
 
 | Setting | Value |
 |---------|-------|
@@ -327,9 +383,38 @@ Backups are configured through the PocketBase Admin UI — no separate backup to
 4. Scope to bucket `barangay-db-backup`
 5. Copy the **Access Key ID** and **Secret Access Key**
 
-#### 5c. Verify
+> This can be the same bucket used for Litestream (5a) with a different path prefix, or
+> a separate bucket — either is fine.
+
+#### 5d. Verify
 
 Wait for the first backup cycle (up to 5 minutes), then check the R2 bucket to confirm backup files appear.
+
+### Step 6: Monitoring & Error Tracking
+
+Both of these are optional and free at this scale — the app runs fine without them, but you
+won't know something's wrong until a barangay tells you.
+
+#### 6a. Frontend error tracking (Sentry)
+
+1. Create a free account at [sentry.io](https://sentry.io) (5,000 events/month free) and a new
+   React project
+2. Copy the project's DSN
+3. Set `VITE_SENTRY_DSN` in `frontend/.env.production` (and pass it as a build arg if building via
+   `docker compose` — already wired into `backend/docker-compose.yml`)
+4. Rebuild — errors now report to Sentry automatically (`frontend/src/lib/sentry.ts`); leave it
+   unset to run without error tracking, nothing else changes
+
+#### 6b. Uptime monitoring
+
+Point a free uptime checker at the health endpoint so you find out about downtime before a
+barangay office calls you:
+
+1. Create a free monitor at [UptimeRobot](https://uptimerobot.com) or
+   [Better Stack](https://betterstack.com) (both have free tiers)
+2. Target URL: `https://records.yourdomain.com/api/health` (or your LAN/tunnel URL)
+3. Check interval: 5 minutes is plenty
+4. Point alerts at an email or phone number someone actually checks
 
 ---
 

@@ -1,0 +1,33 @@
+# Litestream continuous backup config.
+# Streams the live SQLite WAL to S3-compatible object storage (Cloudflare R2,
+# Oracle Object Storage, AWS S3, etc.) so a lost/corrupted volume can be
+# restored to within seconds of the last write, not the last periodic snapshot.
+#
+# All values come from environment variables so this file is safe to commit —
+# nothing here is a secret. If LITESTREAM_BUCKET is unset, the litestream
+# sidecar container will fail to start; that's expected until backups are
+# configured (see docs/DEPLOYMENT.md).
+dbs:
+  - path: /pb/pb_data/data.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: data
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION:-auto}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        retention: 168h
+
+  - path: /pb/pb_data/auxiliary.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: auxiliary
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION:-auto}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        retention: 168h
