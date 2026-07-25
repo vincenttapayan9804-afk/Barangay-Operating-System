@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertCircle, Eye, EyeOff, User, ShieldCheck } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2 } from 'lucide-react'
 import { login, requestLoginOtp, completeMfaLogin } from './session'
 import { ClustrMark } from '@/components/ClustrLogo'
+import { getClient } from '@/api/client'
+import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, type DemoAccount } from '@/lib/demoAccounts'
+import { ensureDemoSeeded } from '@/lib/demoSeed'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -26,6 +29,65 @@ export default function LoginPage() {
   const [mfaId, setMfaId] = useState('')
   const [otpId, setOtpId] = useState('')
   const [otpCode, setOtpCode] = useState('')
+
+  // Temporary demo-mode access — runs entirely in this browser, no backend
+  // required. See lib/demoAccounts.ts and api/mockPocketBase.ts.
+  const [demoLoading, setDemoLoading] = useState<string | null>(null)
+  const [demoError, setDemoError] = useState('')
+  const [demoProgress, setDemoProgress] = useState('')
+  const [showSignUp, setShowSignUp] = useState(false)
+  const [suName, setSuName] = useState('')
+  const [suEmail, setSuEmail] = useState('')
+  const [suPassword, setSuPassword] = useState('')
+
+  async function handleDemoLogin(account: DemoAccount) {
+    setDemoError('')
+    setDemoLoading(account.role)
+    try {
+      enableDemoMode()
+      await ensureDemoSeeded(setDemoProgress)
+      await login(account.email, account.password)
+      navigate('/dashboard')
+    } catch (err) {
+      setDemoError(err instanceof Error ? err.message : 'Could not start the demo')
+    } finally {
+      setDemoLoading(null)
+      setDemoProgress('')
+    }
+  }
+
+  async function handleDemoSignUp(e: React.FormEvent) {
+    e.preventDefault()
+    setDemoError('')
+    setDemoLoading('signup')
+    try {
+      enableDemoMode()
+      await ensureDemoSeeded(setDemoProgress)
+      const client = getClient()
+      const existing = await client
+        .collection('users')
+        .getFirstListItem(client.filter('email = {:e}', { e: suEmail }))
+        .catch(() => null)
+      if (existing) {
+        throw new Error('That email is already registered for this demo. Try logging in, or use a different email.')
+      }
+      await client.collection('users').create({
+        email: suEmail,
+        password: suPassword,
+        role: 'admin',
+        name: suName,
+        barangay_id: DEMO_BARANGAY_ID,
+        is_platform_admin: false,
+      })
+      await login(suEmail, suPassword)
+      navigate('/dashboard')
+    } catch (err) {
+      setDemoError(err instanceof Error ? err.message : 'Could not create your demo account')
+    } finally {
+      setDemoLoading(null)
+      setDemoProgress('')
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -243,6 +305,104 @@ export default function LoginPage() {
               </form>
             )}
           </div>
+
+          {/* Temporary demo access — no backend required */}
+          {!mfaId && (
+            <div className="mt-8">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="font-display text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  No backend yet? Try instantly
+                </span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+
+              {demoError && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>{demoError}</span>
+                </div>
+              )}
+
+              <div className="mt-4 space-y-2">
+                {DEMO_ACCOUNTS.map((account) => (
+                  <button
+                    key={account.role}
+                    type="button"
+                    onClick={() => handleDemoLogin(account)}
+                    disabled={demoLoading !== null}
+                    className="flex w-full items-center gap-3 rounded-xl border border-mint-deep/20 bg-mint-soft/40 px-4 py-3 text-left transition-colors hover:bg-mint-soft disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-mint-deep/10 text-mint-deep">
+                      {demoLoading === account.role ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="size-4" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-sm font-semibold text-gray-900">{account.title}</span>
+                      <span className="block truncate font-display text-xs text-gray-500">{account.description}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {demoLoading && demoProgress && (
+                <p className="mt-3 text-center font-display text-xs text-gray-400">{demoProgress}</p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowSignUp((s) => !s)}
+                className="mt-4 flex w-full items-center justify-center gap-1.5 font-display text-xs font-medium text-gray-500 underline transition-colors hover:text-gray-600"
+              >
+                <UserPlus className="size-3.5" />
+                {showSignUp ? 'Hide sign up' : 'Or create your own free demo account'}
+              </button>
+
+              {showSignUp && (
+                <form onSubmit={handleDemoSignUp} className="mt-3 space-y-3 motion-fade-in">
+                  <input
+                    type="text"
+                    value={suName}
+                    onChange={(e) => setSuName(e.target.value)}
+                    required
+                    placeholder="Your name"
+                    className="w-full rounded-xl bg-gray-100 px-4 py-3.5 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-mint-deep/25"
+                  />
+                  <input
+                    type="email"
+                    value={suEmail}
+                    onChange={(e) => setSuEmail(e.target.value)}
+                    required
+                    placeholder="Email address"
+                    className="w-full rounded-xl bg-gray-100 px-4 py-3.5 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-mint-deep/25"
+                  />
+                  <input
+                    type="password"
+                    value={suPassword}
+                    onChange={(e) => setSuPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    placeholder="Password (min. 8 characters)"
+                    className="w-full rounded-xl bg-gray-100 px-4 py-3.5 font-display text-sm text-gray-900 placeholder-gray-400 outline-none transition-all duration-200 focus:bg-white focus:ring-2 focus:ring-mint-deep/25"
+                  />
+                  <button
+                    type="submit"
+                    disabled={demoLoading !== null}
+                    className="w-full rounded-full border border-mint-deep bg-white px-4 py-3 font-display text-sm font-semibold text-mint-deep shadow-sm transition-colors hover:bg-mint-soft disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {demoLoading === 'signup' ? 'Creating your demo workspace...' : 'Create demo account'}
+                  </button>
+                </form>
+              )}
+
+              <p className="mt-4 text-center font-display text-[11px] leading-relaxed text-gray-400">
+                Demo data lives only in this browser (localStorage) — nothing is sent to a server, and it resets if you exit demo mode.
+              </p>
+            </div>
+          )}
 
           {/* Footer */}
           {/* Footer links */}

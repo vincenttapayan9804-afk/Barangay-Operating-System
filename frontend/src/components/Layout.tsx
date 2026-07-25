@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router'
-import { Menu } from 'lucide-react'
+import { Outlet, useLocation, useNavigate } from 'react-router'
+import { Menu, LogOut } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import OfflineIndicator from '@/offline/OfflineIndicator'
 import { Toaster } from '@/components/ui/toast'
 import { getAllSettings } from '@/api/settings'
 import { ClustrMark } from '@/components/ClustrLogo'
+import { isDemoModeEnabled, exitDemoMode } from '@/lib/demoAccounts'
+import { logout } from '@/auth/session'
 
 const STORAGE_KEY = 'barangayos-sidebar-pinned'
 
@@ -16,6 +18,7 @@ export default function Layout() {
   })
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const [settings, setSettings] = useState<Record<string, any>>({})
 
   useEffect(() => {
@@ -35,14 +38,28 @@ export default function Layout() {
   const province = settings.province ?? ''
   const region = settings.region ?? ''
 
-  const isDemo = import.meta.env.VITE_DEMO_MODE === 'true'
+  const isDemo = isDemoModeEnabled()
+
+  function handleExitDemo() {
+    exitDemoMode()
+    logout()
+    navigate('/login')
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
       {/* Demo-mode banner — outside the grid so it never overlaps any content */}
       {isDemo && (
-        <div className="sticky top-0 z-[60] bg-gradient-to-r from-red-700 via-red-600 to-red-700 px-4 py-2.5 text-center text-xs sm:text-sm font-semibold text-white shadow-md">
-          ⚠️&nbsp; DEMO MODE — This site contains sample data only. Do not enter real personal information.
+        <div className="sticky top-0 z-[60] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-gradient-to-r from-red-700 via-red-600 to-red-700 px-4 py-2.5 text-center text-xs sm:text-sm font-semibold text-white shadow-md">
+          <span>⚠️&nbsp; DEMO MODE — This is sample data stored only in your browser. Do not enter real personal information.</span>
+          <button
+            type="button"
+            onClick={handleExitDemo}
+            className="inline-flex items-center gap-1 rounded-full border border-white/40 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:bg-white/10"
+          >
+            <LogOut className="size-3" />
+            Exit &amp; reset demo
+          </button>
         </div>
       )}
       <div className="grid flex-1 grid-cols-[auto_1fr]">

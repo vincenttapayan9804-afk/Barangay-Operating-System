@@ -1,9 +1,17 @@
 import PocketBase from 'pocketbase'
 import { getApiUrl, isFallbackMode, setFallbackMode, checkApiReachable } from '@/lib/apiConfig'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
+import { createMockClient } from './mockPocketBase'
 
 let client: PocketBase | null = null
+let mockClient: PocketBase | null = null
 
 export function getClient(): PocketBase {
+  if (isDemoModeEnabled()) {
+    if (!mockClient) mockClient = createMockClient() as unknown as PocketBase
+    return mockClient
+  }
+
   if (!client) {
     client = new PocketBase(getApiUrl())
     client.autoCancellation(false)
