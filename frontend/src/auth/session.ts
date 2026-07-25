@@ -7,6 +7,7 @@ export interface AuthUser {
   email: string
   role: Role
   name?: string
+  barangay_id: string
 }
 
 export function getCurrentUser(): AuthUser | null {
@@ -21,6 +22,7 @@ export function getCurrentUser(): AuthUser | null {
     email: record.email as string,
     role: record.role as Role,
     name: record.name as string | undefined,
+    barangay_id: record.barangay_id as string,
   }
 }
 
