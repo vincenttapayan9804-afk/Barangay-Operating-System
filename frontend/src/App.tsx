@@ -20,7 +20,7 @@ export default function App() {
   if (!ready) return null
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ThemeProvider>
         {isFallbackMode() && (
           <div className="fixed bottom-4 left-4 z-50 rounded bg-amber-100 px-3 py-1.5 text-xs text-amber-800 shadow">
