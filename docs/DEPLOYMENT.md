@@ -416,6 +416,76 @@ barangay office calls you:
 3. Check interval: 5 minutes is plenty
 4. Point alerts at an email or phone number someone actually checks
 
+### Step 7: Phase 2 — Watching scale signals
+
+This platform serves multiple barangays from one shared PocketBase/SQLite instance
+(`1785000027_multi_tenant_barangays.js`). SQLite scales well on reads but has a single
+writer lock for the whole database — not per tenant — so the risk as more barangays
+onboard isn't "does isolation still work" (that's covered by CI, Step 4d), it's "does the
+box still keep up." Watch these signals instead of guessing when to act.
+
+#### 7a. Run the scale-signal monitor periodically
+
+`backend/scripts/check-scale-signals.mjs` checks three things against a running instance
+and exits non-zero if any breaches its threshold:
+
+```bash
+cd backend
+PB_URL=https://records.yourdomain.com \
+PB_SUPERUSER_EMAIL=you@example.com PB_SUPERUSER_PASSWORD=your-password \
+PB_DATA_DIR=/path/to/pb_data \
+NGINX_STATUS_URL=http://localhost:8080/nginx_status \
+node scripts/check-scale-signals.mjs
+```
+
+| Signal | What it means | Default threshold |
+|---|---|---|
+| p95 write latency | Proxy for SQLite write-lock contention — rises sharply once concurrent writers start queuing | 500ms |
+| `data.db` growth rate | So storage/backup sizing isn't a surprise as tenants add records | 500 MB/day |
+| Concurrent nginx connections | Coarse load signal independent of PocketBase | 150 |
+
+Run it from cron every 15-30 minutes (`... || mail -s "BarangayOS scale alert" you@example.com`),
+or manually right after onboarding a new wave of barangays. `NGINX_STATUS_URL` requires the
+`/nginx_status` location added to `frontend/nginx.conf` — it's IP-restricted to localhost and the
+Docker network by default; widen the `allow` list there if your setup needs it.
+
+#### 7b. Load test before each onboarding wave
+
+`backend/scripts/load-test.mjs` seeds a throwaway tenant with `CONCURRENCY` staff users and has
+them all hammer writes/reads against it for `DURATION_SECONDS`, reporting latency percentiles —
+this simulates the real risk (many staff across many barangays writing at once against the same
+shared database), not a single tenant's load.
+
+```bash
+cd backend
+PB_URL=https://staging.yourdomain.com \
+PB_SUPERUSER_EMAIL=you@example.com PB_SUPERUSER_PASSWORD=your-password \
+CONCURRENCY=50 DURATION_SECONDS=30 \
+node scripts/load-test.mjs
+```
+
+Run this against staging, not production — it generates real (throwaway) load and records. Set
+`CONCURRENCY` to roughly the number of staff you expect active at once across all onboarded
+barangays during a peak (e.g. month-end document requests), not the barangay count — 50 barangays
+with 2-3 active staff each during a rush is a `CONCURRENCY` of 100-150, not 50.
+
+> This is also how a real cross-tenant bug was caught while building this feature: an old
+> database-wide unique index on `household_number` (predating multi-tenancy) meant two barangays
+> could never both use the same household number — invisible in normal testing, but any load test
+> with more than one active tenant hits it immediately. Fixed in
+> `1785000031_tenant_scoped_uniqueness.js`. If a future migration adds a new unique field to a
+> tenant-owned collection, scope the index to `(barangay_id, field)`, not `(field)` alone.
+
+#### 7c. When a signal trips — decision table
+
+| Signal breached | Likely cause | Action |
+|---|---|---|
+| Write p95 climbing with tenant count, DB size flat | Write-lock contention | Vertically scale the VM first (more CPU helps SQLite's checkpoint/fsync work); if that doesn't help, it's time to plan sharding (grouping barangays across multiple PocketBase instances) — a bigger change, don't do it speculatively |
+| DB growth rate breach | Real data volume growth | Check Litestream backup retention/cost, and storage headroom on the host |
+| Connection count breach | More concurrent users than expected | Vertically scale first; if sustained, reconsider read caching for expensive dashboard aggregate queries |
+| Everything fine on Oracle Free Tier's 4 OCPU/24GB | — | No action — you have real headroom left |
+| Oracle Free Tier limits actually reached | Genuine growth past free-tier capacity | Move to a paid VPS (Hetzner is the cheapest reliable option, ~€4-6/mo) — this is the point where paying finally has a concrete justification, not before |
+
 ---
 
 ## Option B: Direct HTTPS (Without Cloudflare Tunnel)

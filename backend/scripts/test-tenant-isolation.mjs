@@ -156,6 +156,24 @@ async function main() {
   check('tenant B can create its own household', householdB.status === 200, JSON.stringify(householdB.json))
   if (householdA.status !== 200 || householdB.status !== 200) return finish()
 
+  // 7b. Regression check: household_number uniqueness must be scoped per
+  // tenant, not global (1785000031_tenant_scoped_uniqueness.js) — two
+  // barangays independently numbering their own households ("001", "2024-1",
+  // ...) is the normal case, not an edge case, so this must never 400.
+  const sameNumberA = await req('POST', '/api/collections/households/records', {
+    token: tokenA,
+    body: householdPayload(idA, `SHARED-${stamp}`),
+  })
+  const sameNumberB = await req('POST', '/api/collections/households/records', {
+    token: tokenB,
+    body: householdPayload(idB, `SHARED-${stamp}`),
+  })
+  check(
+    'two tenants can independently use the same household_number',
+    sameNumberA.status === 200 && sameNumberB.status === 200,
+    `A=${sameNumberA.status} ${JSON.stringify(sameNumberA.json)} B=${sameNumberB.status} ${JSON.stringify(sameNumberB.json)}`,
+  )
+
   // 8. Tenant A's list never contains tenant B's rows.
   const listA = await req('GET', '/api/collections/households/records?perPage=200', { token: tokenA })
   const leaked = (listA.json?.items || []).some((r) => r.id === householdB.json.id)
