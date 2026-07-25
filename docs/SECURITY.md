@@ -114,3 +114,12 @@ cd frontend && npm audit --audit-level=high
 - **Moderate/low** vulnerabilities are tracked but may not be immediately patched
 
 We encourage contributors to run `npm audit` locally before submitting pull requests.
+
+### Static analysis & container/config scanning
+
+Two additional scanners run in CI on every push to `main` and every pull request:
+
+- **[Trivy](https://github.com/aquasecurity/trivy)** — scans the filesystem for vulnerable dependencies and leaked secrets, and scans `Dockerfile`/`docker-compose.yml` for misconfigurations (e.g. missing `USER`, exposed ports, insecure defaults). Fails the build on CRITICAL/HIGH findings.
+- **[Semgrep](https://semgrep.dev/)** — static analysis (SAST) against the OWASP Top Ten, secrets, and TypeScript/React rulesets, using Semgrep's free public registry (no account/token required).
+
+Both are free and open source, and require no external accounts to run.
