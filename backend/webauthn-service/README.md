@@ -2,14 +2,17 @@
 
 Sidecar service handling passkey (WebAuthn) registration and sign-in for CLUSTR.
 
-PocketBase has no native WebAuthn support, so the actual attestation/assertion cryptography
-(CBOR + COSE key parsing, ECDSA/RSA signature verification) lives here, using the audited
-[`@simplewebauthn/server`](https://simplewebauthn.dev/) library — it is **not** reimplemented in a
-PocketBase JS hook. Credentials are stored in the `webauthn_credentials` PocketBase collection
-(`backend/pb_migrations/1785000032_webauthn_credentials.js`), which this service reads/writes
-using a dedicated superuser account. After a login ceremony verifies, it mints a real PocketBase
-session for the user via the superuser `impersonate` API — the frontend never has to know a
-second backend exists.
+Self-hosted Supabase (like PocketBase before it) has no native WebAuthn support, so the actual
+attestation/assertion cryptography (CBOR + COSE key parsing, ECDSA/RSA signature verification)
+lives here, using the audited [`@simplewebauthn/server`](https://simplewebauthn.dev/) library — it
+is **not** reimplemented as a Postgres function. Credentials are stored in the
+`webauthn_credentials` table (`backend/supabase/migrations/0025_webauthn_credentials.sql`), which
+this service reads/writes directly via PostgREST using the `service_role` key (RLS explicitly has
+no insert/update policy on that table at all — service-role-only by design, see that migration's
+own header comment). After a login ceremony verifies, it mints a real GoTrue session for the user
+via `POST /auth/v1/admin/generate_link` + a server-side `/verify` redemption (see `server.mjs`'s
+`mintSessionForUser`, and `backend/supabase/PHASE3_NOTES.md` for why this specific redemption path
+was chosen) — the frontend never has to know a second backend exists.
 
 See `docs/DEPLOYMENT.md` → "Step 8: Passkey sign-in (WebAuthn)" for setup instructions, and
 `docs/SECURITY.md` for the security model.
@@ -19,9 +22,9 @@ See `docs/DEPLOYMENT.md` → "Step 8: Passkey sign-in (WebAuthn)" for setup inst
 | Variable | Required | Description |
 |---|---|---|
 | `PORT` | no (default `8091`) | Port the service listens on |
-| `PB_URL` | no (default `http://pocketbase:8090`) | Internal PocketBase URL |
-| `PB_SUPERUSER_EMAIL` | **yes** | A dedicated superuser account (don't reuse your personal admin login) |
-| `PB_SUPERUSER_PASSWORD` | **yes** | That superuser's password |
+| `SUPABASE_URL` | no (default `http://kong:8000`) | Kong's internal URL (the stack's single entry point — see `backend/supabase/docker-compose.yml`) |
+| `SUPABASE_ANON_KEY` | **yes** | Used for user-context calls (`/auth/v1/user`, `/auth/v1/verify`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | **yes** | Used for RLS-bypassing calls (credential CRUD, email lookup RPC, `/admin/generate_link`) — don't expose this to the frontend |
 | `RP_ID` | no (default `localhost`) | WebAuthn Relying Party ID — must be a valid domain (no scheme/port); passkeys are bound to it |
 | `RP_NAME` | no (default `CLUSTR Barangay OS`) | Display name shown by the platform's passkey UI |
 | `WEBAUTHN_ORIGINS` | no (default `http://localhost:8080`) | Comma-separated list of exact origin(s) (scheme + host + port) the app is served from |

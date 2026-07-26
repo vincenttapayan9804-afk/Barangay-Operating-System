@@ -499,3 +499,43 @@ begin
 end $$;
 
 do $$ begin raise notice '=== ALL PHASE 2 MFA-GATING ASSERTIONS PASSED ==='; end $$;
+
+-- ---------------------------------------------------------------------
+-- Phase 3: lookup_user_id_by_email is service_role-only (WebAuthn sidecar
+-- needs it to resolve an email to a user id before any session exists;
+-- nobody else should get an email-existence oracle through it).
+-- ---------------------------------------------------------------------
+do $$
+declare found_id uuid;
+begin
+  set local role service_role;
+  select public.lookup_user_id_by_email('staff-a@example.com') into found_id;
+  reset role;
+  perform app.verify_assert('lookup_user_id_by_email: service_role resolves a known email',
+    found_id::text, 'a0000000-0000-0000-0000-000000000002');
+end $$;
+
+do $$
+declare found_id uuid;
+begin
+  set local role service_role;
+  select public.lookup_user_id_by_email('nobody@example.com') into found_id;
+  reset role;
+  perform app.verify_assert('lookup_user_id_by_email: unknown email resolves to null',
+    coalesce(found_id::text, '<null>'), '<null>');
+end $$;
+
+do $$
+declare threw boolean := false;
+begin
+  set local role authenticated;
+  begin
+    perform public.lookup_user_id_by_email('staff-a@example.com');
+  exception when insufficient_privilege then
+    threw := true;
+  end;
+  reset role;
+  perform app.verify_assert('lookup_user_id_by_email: denied to authenticated', threw::text, 'true');
+end $$;
+
+do $$ begin raise notice '=== ALL PHASE 3 RPC-GRANT ASSERTIONS PASSED ==='; end $$;

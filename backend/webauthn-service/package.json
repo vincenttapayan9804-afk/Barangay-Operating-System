@@ -3,14 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Sidecar service handling WebAuthn/passkey registration and login ceremonies for CLUSTR. PocketBase has no native WebAuthn support, so the actual attestation/assertion cryptography lives here (via @simplewebauthn/server) instead of being reimplemented in a PocketBase JS hook.",
+  "description": "Sidecar service handling WebAuthn/passkey registration and login ceremonies for CLUSTR. Neither PocketBase nor self-hosted Supabase has native WebAuthn support, so the actual attestation/assertion cryptography lives here (via @simplewebauthn/server), talking to GoTrue/PostgREST over plain fetch — no Supabase client SDK needed for a service-role-only backend caller.",
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs"
   },
   "dependencies": {
     "@simplewebauthn/server": "13.3.2",
-    "express": "^4.21.2",
-    "pocketbase": "0.27.0"
+    "express": "^4.21.2"
   }
 }

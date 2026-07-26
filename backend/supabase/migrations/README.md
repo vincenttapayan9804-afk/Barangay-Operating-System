@@ -25,6 +25,7 @@ One file per collection (plus foundation files 0000-0004), applied in filename o
 | `0004_lookups.sql` | Global (non-tenant-scoped) reference data |
 | `0005`-`0025` | One file per remaining collection (21 files), dependency order (parents before children) |
 | `0026_get_public_document_rpc.sql` | Public QR-verification RPC (Hard Part #1 in the plan) |
+| `0027_lookup_user_by_email_rpc.sql` | Phase 3: email->user id RPC for the WebAuthn sidecar's login start, service_role-only |
 
 Verified against a real (throwaway) Postgres instance in `backend/supabase/verify/` — see that
 directory's own comments for how to re-run it. 21/21 assertions passing across a representative

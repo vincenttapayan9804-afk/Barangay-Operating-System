@@ -15,3 +15,9 @@ grant usage, select on all sequences in schema public to anon, authenticated;
 -- when run in order, this is just a guard against reordering the two
 -- scripts in future edits).
 revoke all on public.document_requests from anon;
+
+-- Same guard for 0027_lookup_user_by_email_rpc.sql's service_role-only RPC
+-- — the blanket `grant execute on all functions ... to anon, authenticated`
+-- above would otherwise hand every authenticated user an email-existence
+-- oracle.
+revoke all on function public.lookup_user_id_by_email(text) from anon, authenticated;
