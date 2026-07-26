@@ -1,5 +1,7 @@
-import { ClientResponseError } from 'pocketbase'
-import { getClient } from '@/api/client'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { getClient, getMockUsersCollection } from '@/api/client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 
 export type Role = 'admin' | 'staff' | 'viewer'
 
@@ -12,13 +14,46 @@ export interface AuthUser {
   is_platform_admin?: boolean
 }
 
-export function getCurrentUser(): AuthUser | null {
+// Real-mode session cache — supabase-js's own session lookups are async, but
+// every call site here expects getCurrentUser()/isAuthenticated() to answer
+// synchronously (same as PocketBase's authStore did). initAuthSession() (see
+// App.tsx) hydrates this once at boot; onAuthStateChange keeps it current
+// after that (login, logout, token refresh, MFA challenge verified, ...).
+let cachedUser: AuthUser | null = null
+let listenerAttached = false
+
+function userFromSupabaseUser(user: SupabaseUser | null | undefined): AuthUser | null {
+  if (!user) return null
+  const meta = (user.app_metadata ?? {}) as Record<string, unknown>
+  return {
+    id: user.id,
+    email: user.email ?? '',
+    role: meta.role as Role,
+    name: (meta.name as string | undefined) ?? (user.user_metadata?.name as string | undefined),
+    barangay_id: meta.barangay_id as string,
+    is_platform_admin: meta.is_platform_admin as boolean | undefined,
+  }
+}
+
+/** Hydrates the session cache once at boot. Call and await before rendering routes. */
+export async function initAuthSession(): Promise<void> {
+  if (isDemoModeEnabled()) return
+  const supabase = getSupabase()
+  const { data } = await supabase.auth.getSession()
+  cachedUser = userFromSupabaseUser(data.session?.user)
+  if (!listenerAttached) {
+    listenerAttached = true
+    supabase.auth.onAuthStateChange((_event, session) => {
+      cachedUser = userFromSupabaseUser(session?.user)
+    })
+  }
+}
+
+function getCurrentUserDemo(): AuthUser | null {
   const pb = getClient()
   if (!pb.authStore.isValid) return null
-
   const record = pb.authStore.record
   if (!record) return null
-
   return {
     id: record.id,
     email: record.email as string,
@@ -29,24 +64,38 @@ export function getCurrentUser(): AuthUser | null {
   }
 }
 
+export function getCurrentUser(): AuthUser | null {
+  return isDemoModeEnabled() ? getCurrentUserDemo() : cachedUser
+}
+
 export function isPlatformAdmin(): boolean {
   return getCurrentUser()?.is_platform_admin === true
 }
 
 export function isAuthenticated(): boolean {
-  return getClient().authStore.isValid
+  return isDemoModeEnabled() ? getClient().authStore.isValid : cachedUser !== null
 }
 
 export async function verifyAuth(): Promise<boolean> {
-  const pb = getClient()
-  if (!pb.authStore.isValid) return false
-  try {
-    await pb.collection('users').authRefresh()
-    return true
-  } catch {
-    pb.authStore.clear()
+  if (isDemoModeEnabled()) {
+    const pb = getClient()
+    if (!pb.authStore.isValid) return false
+    try {
+      await getMockUsersCollection().authRefresh()
+      return true
+    } catch {
+      pb.authStore.clear()
+      return false
+    }
+  }
+
+  const { data, error } = await getSupabase().auth.getSession()
+  if (error || !data.session) {
+    cachedUser = null
     return false
   }
+  cachedUser = userFromSupabaseUser(data.session.user)
+  return true
 }
 
 export function hasRole(...roles: Role[]): boolean {
@@ -55,35 +104,65 @@ export function hasRole(...roles: Role[]): boolean {
   return roles.includes(user.role)
 }
 
-// Admin accounts require a second factor (see 1785000029_admin_mfa.js). When
-// that's the case, the first password call fails with a 401 whose body is
-// `{ mfaId }` instead of a normal error — that's not a failed login, it's a
-// request to complete the next step. Non-admin accounts (mfa.rule doesn't
-// match) log in normally on the first call.
+// Admin (and, per barangays.require_staff_mfa, sometimes staff) accounts
+// require a second factor. Unlike PocketBase's email-OTP flow, Supabase's
+// MFA (Phase 2's TOTP decision) doesn't block sign-in itself — GoTrue always
+// issues a valid (aal1) session on a correct password, then RLS refuses
+// tenant data until the session reaches aal2. login() checks the
+// post-sign-in assurance level itself and surfaces a challenge when aal2 is
+// required, so the caller can prompt for an authenticator code before
+// treating the user as fully signed in.
 export interface MfaRequired {
   mfaRequired: true
-  mfaId: string
+  factorId: string
+  challengeId: string
 }
 
 export async function login(email: string, password: string): Promise<MfaRequired | { mfaRequired: false }> {
-  try {
-    await getClient().collection('users').authWithPassword(email, password)
+  if (isDemoModeEnabled()) {
+    await getMockUsersCollection().authWithPassword(email, password)
     return { mfaRequired: false }
-  } catch (err) {
-    const mfaId = err instanceof ClientResponseError ? (err.data as { mfaId?: string })?.mfaId : undefined
-    if (mfaId) return { mfaRequired: true, mfaId }
-    throw err
   }
+
+  const supabase = getSupabase()
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+  if (signInError) throw signInError
+
+  const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  if (aalError) throw aalError
+
+  if (aal.nextLevel === 'aal2' && aal.currentLevel !== aal.nextLevel) {
+    const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
+    if (factorsError) throw factorsError
+    const totp = factorsData.totp.find((f) => f.status === 'verified')
+    if (!totp) {
+      throw new Error('MFA is required for this account, but no authenticator app is enrolled yet. Contact your barangay admin.')
+    }
+    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: totp.id })
+    if (challengeError) throw challengeError
+    return { mfaRequired: true, factorId: totp.id, challengeId: challenge.id }
+  }
+
+  return { mfaRequired: false }
 }
 
-export function requestLoginOtp(email: string) {
-  return getClient().collection('users').requestOTP(email)
+/** Issues a fresh challenge for the same factor — used for a "my code expired" retry, not a resend (no code is emailed; TOTP codes come from the user's own authenticator app). */
+export async function requestNewMfaChallenge(factorId: string): Promise<string> {
+  const { data, error } = await getSupabase().auth.mfa.challenge({ factorId })
+  if (error) throw error
+  return data.id
 }
 
-export function completeMfaLogin(otpId: string, code: string, mfaId: string) {
-  return getClient().collection('users').authWithOTP(otpId, code, { mfaId })
+export async function completeMfaLogin(factorId: string, challengeId: string, code: string): Promise<void> {
+  const { error } = await getSupabase().auth.mfa.verify({ factorId, challengeId, code })
+  if (error) throw error
 }
 
 export function logout(): void {
-  getClient().authStore.clear()
+  if (isDemoModeEnabled()) {
+    getClient().authStore.clear()
+    return
+  }
+  cachedUser = null
+  void getSupabase().auth.signOut()
 }

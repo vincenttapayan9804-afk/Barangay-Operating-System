@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
-import { getClient } from '@/api/client'
+import { getSupabase } from '@/lib/supabaseClient'
 import { registerPasskey, browserSupportsWebAuthn } from '@/lib/webauthn'
 import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { toast } from '@/lib/toast'
@@ -21,12 +21,18 @@ export function PasskeySettings() {
   const [deleting, setDeleting] = useState(false)
 
   async function refresh() {
+    // Demo mode never renders this component (see the early return below),
+    // but its mount effect still fires — skip the network call entirely
+    // rather than reaching for a backend that isn't there.
+    if (isDemoModeEnabled()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
-      const records = await getClient()
-        .collection('webauthn_credentials')
-        .getFullList<PasskeyRecord>({ sort: '-created' })
-      setPasskeys(records)
+      const { data, error } = await getSupabase().from('webauthn_credentials').select('*').order('created', { ascending: false })
+      if (error) throw error
+      setPasskeys(data as PasskeyRecord[])
     } catch {
       // Non-fatal — just leave the list empty rather than blocking the page.
     } finally {
@@ -57,7 +63,8 @@ export function PasskeySettings() {
     if (!pendingDelete) return
     setDeleting(true)
     try {
-      await getClient().collection('webauthn_credentials').delete(pendingDelete.id)
+      const { error } = await getSupabase().from('webauthn_credentials').delete().eq('id', pendingDelete.id)
+      if (error) throw error
       toast.success('Passkey removed')
       setPendingDelete(null)
       await refresh()

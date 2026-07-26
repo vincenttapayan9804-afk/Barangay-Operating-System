@@ -83,7 +83,7 @@ export default function PlatformAdmin() {
         toast.error(
           `Barangay "${form.name}" was created, but its admin account failed: ` +
             `${adminErr instanceof ApiError ? adminErr.message : 'unknown error'}. ` +
-            'Retry from the PocketBase admin panel or create the admin manually.',
+            'Retry creating the admin account from this page, or contact an operator to create it directly.',
         )
         await refresh()
         return

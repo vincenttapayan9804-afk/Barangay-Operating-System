@@ -1,30 +1,25 @@
-import { getClient } from './client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 
 /**
  * Fire-and-forget Meilisearch sync, mirroring createActivity()'s pattern —
  * a search-index failure must never block the actual mutation. Goes
- * through the PocketBase-proxied /api/search/index route (see
- * backend/pb_hooks/search.pb.js), never Meilisearch directly — the route
- * forces barangay_id from the trusted session, so this file never needs to
- * (and couldn't meaningfully) set it itself.
+ * through the search-index Edge Function (backend/supabase/functions/
+ * search-index, a port of backend/pb_hooks/search.pb.js), never Meilisearch
+ * directly — the function forces barangay_id from the trusted session, so
+ * this file never needs to (and couldn't meaningfully) set it itself.
  *
- * Silently no-ops if Meilisearch isn't configured for this deployment —
- * the route itself handles that gracefully, this just needs to not throw.
+ * Silently no-ops if Meilisearch isn't configured for this deployment, or
+ * in demo mode (no Edge Functions there at all) — the function itself
+ * handles the "not configured" case gracefully, this just needs to not throw.
  */
 
 export type SearchIndexName = 'residents' | 'document_requests' | 'blotter_records'
 
 async function callSearchIndex(body: Record<string, unknown>): Promise<void> {
+  if (isDemoModeEnabled()) return
   try {
-    const client = getClient()
-    await fetch(`${client.baseURL}/api/search/index`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: client.authStore.token,
-      },
-      body: JSON.stringify(body),
-    })
+    await getSupabase().functions.invoke('search-index', { body })
   } catch {
     // Silent — indexing failure should not block the main operation.
   }

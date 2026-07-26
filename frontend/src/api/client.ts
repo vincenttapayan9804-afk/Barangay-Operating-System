@@ -1,55 +1,34 @@
-import PocketBase from 'pocketbase'
-import { getApiUrl, isFallbackMode, setFallbackMode, checkApiReachable } from '@/lib/apiConfig'
 import { isDemoModeEnabled } from '@/lib/demoAccounts'
-import { createMockClient } from './mockPocketBase'
+import { createMockClient, type MockClient } from './mockPocketBase'
 
-let client: PocketBase | null = null
-let mockClient: PocketBase | null = null
+let mockClient: MockClient | null = null
 
-export function getClient(): PocketBase {
-  if (isDemoModeEnabled()) {
-    if (!mockClient) mockClient = createMockClient() as unknown as PocketBase
-    return mockClient
+/**
+ * Demo mode's fake, localStorage-backed backend (see mockPocketBase.ts) —
+ * the only consumer of this client from Phase 5 onward. The real backend is
+ * @supabase/supabase-js (see lib/supabaseClient.ts's getSupabase()); every
+ * api/*.ts helper branches on isDemoModeEnabled() to pick between the two.
+ * Throws outside demo mode so a missed branch fails loudly instead of
+ * silently reading/writing fake local data.
+ */
+export function getClient(): MockClient {
+  if (!isDemoModeEnabled()) {
+    throw new Error('getClient() is demo-mode only — use getSupabase() for the real backend')
   }
-
-  if (!client) {
-    client = new PocketBase(getApiUrl())
-    client.autoCancellation(false)
-
-    // Stamp every new record with the logged-in user's own barangay_id so
-    // callers don't need to pass it explicitly — PocketBase's API rules are
-    // what actually enforce tenant isolation server-side; this just makes
-    // creates satisfy those rules without touching every api/*.ts file.
-    client.beforeSend = (url, options) => {
-      if (
-        options.method === 'POST' &&
-        url.endsWith('/records') &&
-        options.body &&
-        typeof options.body === 'object'
-      ) {
-        const barangayId = client!.authStore.record?.barangay_id
-        const body = options.body as Record<string, unknown>
-        if (barangayId && !body.barangay_id) {
-          body.barangay_id = barangayId
-        }
-      }
-      return { url, options }
-    }
-  }
-  return client
+  if (!mockClient) mockClient = createMockClient()
+  return mockClient
 }
 
-let reachabilityChecked = false
-
-export async function ensureReachability(): Promise<boolean> {
-  if (reachabilityChecked && !isFallbackMode()) return true
-
-  const reachable = await checkApiReachable()
-  setFallbackMode(!reachable)
-  reachabilityChecked = true
-  return reachable
+// mockPocketBase.ts's `collection('users')` return type is a runtime-only
+// distinction (TypeScript sees the union of its two possible shapes
+// regardless of the string passed in) — this narrows it for the one caller
+// that needs the auth-only methods (auth/session.ts), without touching
+// mockPocketBase.ts itself.
+export interface MockUsersCollection {
+  authWithPassword(email: string, password: string): Promise<{ token: string; record: Record<string, unknown> }>
+  authRefresh(): Promise<{ token: string; record: Record<string, unknown> }>
 }
 
-export function resetReachabilityCheck(): void {
-  reachabilityChecked = false
+export function getMockUsersCollection(): MockUsersCollection {
+  return getClient().collection('users') as unknown as MockUsersCollection
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Loader2, X, Plus, Building2, Users, MapPin, ShieldAlert, CheckCircle2, AlertTriangle, Database, Trash2, Languages } from 'lucide-react'
-import { getClient } from '@/api/client'
-import { upsertSetting, type ApiSetting } from '@/api/settings'
+import { upsertSetting, getAllSettingsRecords } from '@/api/settings'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -177,7 +176,7 @@ export default function SystemSettings() {
     try {
       setLoading(true)
       setError(null)
-      const records = await getClient().collection('system_settings').getFullList<ApiSetting>()
+      const records = await getAllSettingsRecords()
       const ids: Record<string, string> = {}
       const vals: Record<string, any> = {}
       for (const r of records) { ids[r.key] = r.id; vals[r.key] = r.value }

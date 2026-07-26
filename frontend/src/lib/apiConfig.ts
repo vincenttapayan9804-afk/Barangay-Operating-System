@@ -38,10 +38,14 @@ export async function resolveApiUrl(): Promise<string> {
 
   // Page is HTTP — try local LAN first, fall back to tunnel
   try {
-    const res = await fetch(`${LOCAL_URL}/api/health`, {
+    // GoTrue's own /health (routed, but not key-auth-gated by Kong's
+    // auth-v1-open* routes — see backend/supabase/kong.yml) — any response
+    // at all, even a 401 from a route that IS key-auth-gated, confirms the
+    // gateway is actually reachable, which is all this check needs to know.
+    const res = await fetch(`${LOCAL_URL}/auth/v1/health`, {
       signal: AbortSignal.timeout(3000),
     })
-    if (res.ok) {
+    if (res.status) {
       resolvedUrl = LOCAL_URL
       setFallbackMode(false)
       return LOCAL_URL
@@ -56,10 +60,13 @@ export async function resolveApiUrl(): Promise<string> {
 
 export async function checkApiReachable(): Promise<boolean> {
   try {
-    const res = await fetch(`${getApiUrl()}/api/health`, {
+    // Same "any response counts" reasoning as resolveApiUrl() above — this
+    // only needs to know the gateway answers at all, not whether this
+    // particular unauthenticated request is itself allowed.
+    await fetch(`${getApiUrl()}/auth/v1/health`, {
       signal: AbortSignal.timeout(5000),
     })
-    return res.ok
+    return true
   } catch {
     return false
   }
