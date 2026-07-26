@@ -463,9 +463,17 @@ per-run write-latency figure — otherwise the reported average keeps blending i
 `backend/scripts/load-test.mjs` seeds a throwaway tenant with `CONCURRENCY` staff users and has
 them all hammer writes/reads against it for `DURATION_SECONDS`, reporting latency percentiles —
 this simulates the real risk (many staff across many barangays writing at once against the same
-shared database), not a single tenant's load. This script is scheduled to be re-pointed at the
-new stack's endpoints in Phase 7 (Testing & CI port) — until then, treat its own PocketBase-shaped
-usage as reference material for the request pattern to replicate, not a runnable command here.
+shared database), not a single tenant's load. It talks directly to `auth`/`rest` on their own
+ports (same Kong-bypassing approach as `scripts/healthcheck.sh` — apikey enforcement is a Kong
+concern, not something either service checks itself):
+
+```bash
+cd backend
+AUTH_URL=http://localhost:9999 REST_URL=http://localhost:3001 \
+SERVICE_ROLE_KEY=... \
+CONCURRENCY=20 DURATION_SECONDS=30 \
+node scripts/load-test.mjs
+```
 
 > This is also how a real cross-tenant bug was caught while building the original PocketBase-era
 > version of this feature: a database-wide unique index on `household_number` (predating

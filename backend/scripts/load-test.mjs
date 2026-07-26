@@ -1,45 +1,54 @@
 #!/usr/bin/env node
-// Phase 2 load test — validate write-lock headroom before onboarding a new
-// wave of barangays, instead of finding out from a live outage.
+// Load test — validate write headroom before onboarding a new wave of
+// barangays, instead of finding out from a live outage. Supabase/Postgres
+// port of the PocketBase-era version: talks directly to GoTrue (`auth`) and
+// PostgREST (`rest`) on their own ports, the same Kong-bypassing approach
+// test-tenant-isolation.mjs uses (see that script's header comment) — Kong's
+// apikey requirement isn't part of what this measures, and skipping it
+// keeps this runnable against the same minimal db+auth+rest subset CI
+// brings up.
 //
 // Seeds one throwaway tenant with CONCURRENCY staff users, then has all of
 // them hammer that tenant's households collection concurrently for
 // DURATION_SECONDS (a mix of writes and list reads), simulating the kind of
 // burst a real deployment sees during month-end document-request rushes —
 // many staff across (in production) many barangays writing at once against
-// the same shared SQLite database. Reports throughput, error rate, and
-// latency percentiles split by write vs read, so a rising p95 on writes as
-// CONCURRENCY increases is the concrete "time to shard or scale up" signal
-// described in docs/DEPLOYMENT.md "Phase 2: Watching scale signals".
+// the same shared Postgres database. Reports throughput, error rate, and
+// latency percentiles split by write vs read — the same signal
+// docs/DEPLOYMENT.md's "Watching scale signals" section and
+// backend/scripts/check-scale-signals.mjs's pg_stat_statements-based write
+// latency check are both watching for, just generated under real load
+// instead of read from production history.
 //
 // Usage:
-//   PB_URL=http://127.0.0.1:8090 \
-//   PB_SUPERUSER_EMAIL=admin@example.com PB_SUPERUSER_PASSWORD=... \
+//   AUTH_URL=http://127.0.0.1:9999 REST_URL=http://127.0.0.1:3001 \
+//   SERVICE_ROLE_KEY=... \
 //   CONCURRENCY=20 DURATION_SECONDS=30 \
 //   node scripts/load-test.mjs
 //
 // Run this against a staging/test instance, not production — it generates
 // real load and real (throwaway) records.
 
-const PB_URL = process.env.PB_URL || 'http://127.0.0.1:8090'
-const PB_SUPERUSER_EMAIL = process.env.PB_SUPERUSER_EMAIL
-const PB_SUPERUSER_PASSWORD = process.env.PB_SUPERUSER_PASSWORD
+const AUTH_URL = process.env.AUTH_URL || 'http://127.0.0.1:9999'
+const REST_URL = process.env.REST_URL || 'http://127.0.0.1:3001'
+const SERVICE_ROLE_KEY = process.env.SERVICE_ROLE_KEY
 const CONCURRENCY = Number(process.env.CONCURRENCY || 20)
 const DURATION_SECONDS = Number(process.env.DURATION_SECONDS || 30)
 const WRITE_RATIO = Number(process.env.WRITE_RATIO || 0.7)
 
-if (!PB_SUPERUSER_EMAIL || !PB_SUPERUSER_PASSWORD) {
-  console.error('PB_SUPERUSER_EMAIL and PB_SUPERUSER_PASSWORD are required.')
+if (!SERVICE_ROLE_KEY) {
+  console.error('SERVICE_ROLE_KEY is required.')
   process.exit(1)
 }
 
-async function req(method, path, { body, token } = {}) {
+async function req(base, method, path, { body, token } = {}) {
   const started = performance.now()
-  const res = await fetch(`${PB_URL}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: token } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(method === 'POST' ? { Prefer: 'return=minimal' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   })
@@ -53,8 +62,9 @@ async function req(method, path, { body, token } = {}) {
 
 function householdPayload(barangayId, stamp, n) {
   return {
-    // household_number is unique per (barangay_id, household_number) — stamp
-    // disambiguates separate runs against the same instance, since a
+    barangay_id: barangayId,
+    // household_number is unique per (barangay_id, household_number) —
+    // stamp disambiguates separate runs against the same instance, since a
     // throwaway tenant's records may be left behind between runs.
     household_number: `LOAD-${stamp}-${n}`,
     region: 'Region I',
@@ -66,7 +76,6 @@ function householdPayload(barangayId, stamp, n) {
     tenure_status: 'Owner',
     household_unit: 'Single House',
     data_set: 'BIPS',
-    barangay_id: barangayId,
   }
 }
 
@@ -90,54 +99,45 @@ function summarize(label, samples) {
 }
 
 async function main() {
-  console.log(`Load test against ${PB_URL} — concurrency=${CONCURRENCY}, duration=${DURATION_SECONDS}s, write_ratio=${WRITE_RATIO}`)
-
-  const suRes = await fetch(`${PB_URL}/api/collections/_superusers/auth-with-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identity: PB_SUPERUSER_EMAIL, password: PB_SUPERUSER_PASSWORD }),
-  })
-  if (!suRes.ok) {
-    console.error(`Superuser auth failed (status ${suRes.status}). Aborting.`)
-    process.exit(1)
-  }
-  const suToken = (await suRes.json()).token
+  console.log(`Load test — auth=${AUTH_URL} rest=${REST_URL} — concurrency=${CONCURRENCY}, duration=${DURATION_SECONDS}s, write_ratio=${WRITE_RATIO}`)
 
   const stamp = Date.now()
-  const barangayRes = await fetch(`${PB_URL}/api/collections/barangays/records`, {
+  const barangayRes = await fetch(`${REST_URL}/barangays`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: suToken },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE_KEY}`, Prefer: 'return=representation' },
     body: JSON.stringify({ name: `Load Test ${stamp}`, active: true }),
   })
-  const barangay = await barangayRes.json()
+  if (!barangayRes.ok) {
+    console.error(`Failed to seed throwaway tenant (status ${barangayRes.status}): ${await barangayRes.text()}`)
+    process.exit(1)
+  }
+  const barangay = (await barangayRes.json())[0]
   console.log(`Seeded throwaway tenant: ${barangay.id}`)
 
   console.log(`Seeding ${CONCURRENCY} staff users...`)
   const tokens = []
   for (let i = 0; i < CONCURRENCY; i++) {
     const email = `loadtest-${stamp}-${i}@example.com`
-    const userRes = await fetch(`${PB_URL}/api/collections/users/records`, {
+    const userRes = await fetch(`${AUTH_URL}/admin/users`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: suToken },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
       body: JSON.stringify({
         email,
         password: 'LoadTest123!',
-        passwordConfirm: 'LoadTest123!',
-        role: 'staff',
-        barangay_id: barangay.id,
-        verified: true,
+        email_confirm: true,
+        user_metadata: { role: 'staff', barangay_id: barangay.id, name: `Load Test ${i}` },
       }),
     })
     if (!userRes.ok) {
       console.error(`Failed to seed user ${i}: ${await userRes.text()}`)
       process.exit(1)
     }
-    const loginRes = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
+    const loginRes = await fetch(`${AUTH_URL}/token?grant_type=password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identity: email, password: 'LoadTest123!' }),
+      body: JSON.stringify({ email, password: 'LoadTest123!' }),
     })
-    tokens.push((await loginRes.json()).token)
+    tokens.push((await loginRes.json()).access_token)
   }
 
   console.log(`Running for ${DURATION_SECONDS}s...`)
@@ -150,13 +150,13 @@ async function main() {
     while (Date.now() < deadline) {
       if (Math.random() < WRITE_RATIO) {
         const n = counter++
-        const sample = await req('POST', '/api/collections/households/records', {
+        const sample = await req(REST_URL, 'POST', '/households', {
           token,
           body: householdPayload(barangay.id, stamp, n),
         })
         writeSamples.push(sample)
       } else {
-        const sample = await req('GET', '/api/collections/households/records?perPage=50&sort=-created', { token })
+        const sample = await req(REST_URL, 'GET', '/households?select=*&order=created.desc&limit=50', { token })
         readSamples.push(sample)
       }
     }
@@ -177,13 +177,13 @@ async function main() {
   if (writeP95 > 500) {
     console.log(
       `Write p95 (${writeP95.toFixed(1)}ms) is elevated at concurrency=${CONCURRENCY} — this is the ` +
-        `SQLite write-lock contention signal. See docs/DEPLOYMENT.md "Phase 2" before onboarding more load at this size.`,
+        `Postgres write-contention signal. See docs/DEPLOYMENT.md "Watching scale signals" before onboarding more load at this size.`,
     )
   } else {
     console.log(`Write p95 (${writeP95.toFixed(1)}ms) looks healthy at concurrency=${CONCURRENCY}.`)
   }
 
-  console.log(`\nCleanup note: throwaway tenant "${barangay.id}" and its ${CONCURRENCY} users/records were left in place — delete them via the superuser panel if this ran against a shared test instance.`)
+  console.log(`\nCleanup note: throwaway tenant "${barangay.id}" and its ${CONCURRENCY} users/records were left in place — delete them via the service_role key if this ran against a shared test instance.`)
 }
 
 main().catch((err) => {
