@@ -9,4 +9,4 @@ npm run build -- --mode $Env
 
 Write-Host "Build complete. Output in frontend/dist/"
 Write-Host "To deploy with Docker:"
-Write-Host "  cd backend && docker compose up -d --build"
+Write-Host "  cd backend/supabase && docker compose up -d --build"

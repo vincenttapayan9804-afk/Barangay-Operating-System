@@ -1,0 +1,15 @@
+-- Phase 6 (infra/ops rebuild): pg_stat_statements backs
+-- backend/scripts/check-scale-signals.mjs's write-latency signal, the
+-- direct replacement for PocketBase's /api/logs.execTime. supabase/postgres
+-- ships the extension binary but doesn't enable it by default the way it
+-- enables e.g. pgcrypto, so this is a real enablement step, not a no-op
+-- guard.
+--
+-- Requires pg_stat_statements in shared_preload_libraries (supabase/postgres
+-- already sets this — confirmed against the image's own default
+-- postgresql.conf). If pointed at a bare Postgres instead (e.g. this
+-- repo's own verify/00_test_env.sql target), this CREATE EXTENSION will
+-- fail with "pg_stat_statements must be loaded via shared_preload_libraries"
+-- unless that's set first — expected there; check-scale-signals.mjs's own
+-- SKIP-if-unavailable handling covers that case at runtime.
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared Docker stack serves every onboarded barangay, with tenant isolation enforced server-side by PocketBase API rules (see [Multi-Tenancy](#multi-tenancy) below). The stack is four containers: **nginx** (SPA + reverse proxy), **PocketBase** (REST API, SQLite), **webauthn** (passkey sidecar), and **litestream** (continuous backup). A Cloudflare Tunnel provides secure public internet access through the nginx container.
+CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared, self-hosted Supabase stack serves every onboarded barangay, with tenant isolation enforced server-side by Postgres Row-Level Security (see [Multi-Tenancy](#multi-tenancy) below). The backend is nine containers: **db** (Postgres), **auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime), **edge-runtime** (Deno Edge Functions), **kong** (API gateway, the single public entry point for all of the above), **meilisearch** (full-text search), **webauthn** (passkey sidecar), **supavisor** (connection pooler), and **backup** (continuous pgBackRest backup). A Cloudflare Tunnel provides secure public internet access, same as before.
 
 ```
                          ┌──────────────────────────────┐
@@ -15,33 +15,49 @@ CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared Docker stack s
                      └──────────┬──────────┘
                                 │
                      ┌──────────┴──────────┐
-                     │  nginx (port 8080)   │
-                     │  + HTTPS (8443)      │
-                     │  rate limiting       │
-                     └───┬──────────────┬───┘
-                    /api/│              │/api/webauthn/
-                     ┌───┴────────┐ ┌───┴──────────┐
-                     │ PocketBase │ │  webauthn     │
-                     │  (8090)    │ │  sidecar      │
-                     │ pb_data/   │ │  (8091)       │
-                     └─────┬──────┘ └──────────────┘
-                           │ WAL stream
-                     ┌─────┴──────┐
-                     │ litestream │──→ S3-compatible bucket
-                     └────────────┘
+                     │   nginx (SPA host)   │
+                     └──────────┬──────────┘
+                                │ /rest/v1, /auth/v1, /realtime/v1, /functions/v1
+                     ┌──────────┴──────────┐
+                     │   kong (port 8000)   │
+                     │  apikey + acl + cors │
+                     └──┬───┬────┬────┬─────┘
+                        │   │    │    │
+              ┌─────────┘   │    │    └─────────┐
+        ┌─────┴────┐  ┌─────┴──┐ │        ┌─────┴───────┐
+        │   rest   │  │  auth  │ │        │ edge-runtime │
+        │(PostgREST)│  │(GoTrue)│ │        │(Edge Funcs)  │
+        └─────┬────┘  └────┬───┘ │        └─────┬────────┘
+              │            │  ┌──┴──────┐        │
+              │            │  │realtime │        │
+              │            │  └────┬────┘        │
+              └────────────┴───────┴──────────────┘
+                                │
+                          ┌─────┴──────┐
+                          │  db (15)   │──────→ pgBackRest → S3-compatible bucket
+                          │  Postgres  │
+                          └─────┬──────┘
+                                │ (pooled entry point, direct
+                                │  clients / future growth)
+                          ┌─────┴──────┐
+                          │  supavisor  │
+                          └────────────┘
+
+        webauthn sidecar and meilisearch reach the stack only through
+        kong (webauthn) or are reached only by edge-runtime (meilisearch) —
+        neither is exposed publicly.
 
 LAN Users: http://192.168.x.x:8080 or https://192.168.x.x:8443 (HTTPS with mkcert for PWA)
 Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → nginx, HTTPS)
-Direct:    http://192.168.x.x:8090 (PocketBase admin UI, LAN only)
 ```
 
-The nginx container serves the SPA and proxies `/api/*` (with separate, tighter rate limits on auth endpoints) to PocketBase, `/api/webauthn/*` to the WebAuthn sidecar, and `/_/*` to the PocketBase admin UI. The Cloudflare Tunnel exposes `localhost:8080` (nginx) to the internet. PocketBase port 8090 remains accessible on the LAN for direct admin access. See `docs/DEPLOYMENT.md` for the full hosting/scaling guide.
+Kong (`backend/supabase/kong.yml`) is the single public entry point for every backend service — `/auth/v1/*`, `/rest/v1/*`, `/realtime/v1/*`, and `/functions/v1/*`, each gated by an apikey (the anon or service_role JWT) plus an ACL group check. The frontend's `@supabase/supabase-js` client (`frontend/src/lib/supabaseClient.ts`) talks to Kong exclusively — it never connects to `db`, `rest`, `auth`, `realtime`, or `edge-runtime` directly, in dev or in production. See `docs/DEPLOYMENT.md` for the full hosting/scaling guide.
 
 ## Multi-Tenancy
 
-One shared PocketBase instance serves every barangay. Every tenant-owned collection carries a `barangay_id` relation field (added in `backend/pb_migrations/1785000027_multi_tenant_barangays.js` onward), and every collection's list/view/create/update/delete rule is compounded with a `barangay_id = @request.auth.barangay_id` check — enforced server-side by PocketBase as a SQL `WHERE` clause, not by client-side filtering. A `beforeSend` hook on the frontend PocketBase client (`frontend/src/api/client.ts`) auto-stamps every record-create request with the logged-in user's own `barangay_id`, so none of the 20+ API modules need to set it manually.
+One shared Postgres database serves every barangay. Every tenant-owned table carries a `barangay_id` column (see `backend/supabase/migrations/0001_barangays.sql` onward), and every table's Row-Level Security policies are compounded with an `app.current_barangay_id()` check — enforced server-side by Postgres itself as part of the query plan, not by client-side filtering, and not bypassable by any query shape (unlike a hand-added `WHERE` clause, RLS applies even to a client-supplied `.select('*')` with no filter at all). Every tenant-scoped table's `barangay_id` column also defaults to `app.current_barangay_id()` (see `backend/supabase/migrations/0000_auth_helpers.sql`), so — unlike the old PocketBase `beforeSend` hook, which had to stamp it onto every create request client-side — real-mode inserts never need to set it explicitly at all.
 
-New tenants are provisioned through the `/platform-admin` console (`frontend/src/pages/PlatformAdmin.tsx`, `frontend/src/api/platformAdmin.ts`), gated to a platform-admin flag rather than the regular per-tenant `admin` role — a barangay's own admin can never see or manage another barangay's data or users. Tenant isolation is verified in CI: `.github/workflows/ci.yml`'s `tenant-isolation` job spins up a real PocketBase instance and runs `backend/scripts/test-tenant-isolation.mjs`, which asserts that a session authenticated as tenant A gets zero rows back when listing tenant B's data.
+New tenants are provisioned through the `/platform-admin` console (`frontend/src/pages/PlatformAdmin.tsx`, `frontend/src/api/platformAdmin.ts`), gated to a platform-admin flag rather than the regular per-tenant `admin` role — a barangay's own admin can never see or manage another barangay's data or users. Onboarding a barangay's first admin account calls the `create-barangay-admin` Edge Function (`backend/supabase/functions/create-barangay-admin/`), since creating an `auth.users` row is a GoTrue admin-API operation gated to the `service_role` key, which never reaches the frontend — a real architectural difference from PocketBase, where any client satisfying the `users` collection's own create rule could create a user record directly. Tenant isolation is verified in CI (Phase 7): `test-tenant-isolation.mjs` asserts that a session authenticated as tenant A gets zero rows back when listing tenant B's data, rewritten to PostgREST/GoTrue endpoint shapes.
 
 ## Smart URL Resolution
 
@@ -58,8 +74,8 @@ The app automatically selects the optimal API URL based on the client's network 
 
 1. If `VITE_LOCAL_API_URL` is empty (dev mode), use `VITE_API_URL` directly
 2. If the page was loaded over HTTPS, skip local fallback entirely (browsers block HTTPS to HTTP requests)
-3. If the page is HTTP, probe `VITE_LOCAL_API_URL/api/health` with a 3-second timeout
-4. If the local server responds, use the LAN URL for zero-latency, offline-capable access
+3. If the page is HTTP, probe `VITE_LOCAL_API_URL/auth/v1/health` (GoTrue's own health endpoint, reached through Kong) with a 3-second timeout
+4. If the local server responds — even a 401 from Kong's key-auth plugin counts as "reachable"; reachability only means "something answered," not "the request was authorized" — use the LAN URL for zero-latency, offline-capable access
 5. If the local server is unreachable, fall back to the tunnel URL
 
 This ensures that users inside the barangay office connect directly to the local server (fast, works offline), while remote users always use the secure tunnel URL.
@@ -84,51 +100,56 @@ User Action → try API call → success → done
 
 ## Authentication & Authorization
 
-PocketBase handles authentication via email/password or passkey. The app uses role-based access control with three roles, enforced server-side by PocketBase's collection-level rules, on top of the tenant (`barangay_id`) scoping described above.
+GoTrue (Supabase's auth server) handles authentication via email/password or passkey. The app uses role-based access control with three roles, enforced server-side by Postgres Row-Level Security policies keyed off the JWT's own claims, on top of the tenant (`barangay_id`) scoping described above.
 
 | Role | Permissions |
 |------|------------|
-| **Admin** | Full CRUD on all collections, user management, system settings — within their own tenant |
+| **Admin** | Full CRUD on all tables, user management, system settings — within their own tenant |
 | **Staff** | Create/update records, documents, residents; limited delete |
-| **Viewer** | Read-only access to most collections |
+| **Viewer** | Read-only access to most tables |
 
 A separate platform-admin flag (independent of the three tenant roles above) gates the `/platform-admin` console for onboarding new barangays.
 
 ### Auth flow
 
-1. User submits email/password (or completes a passkey ceremony — see below) via `login()`
-2. Server validates credentials and returns an auth token
-3. Token is stored in PocketBase's `authStore` (persisted to localStorage under `pocketbase_auth`; the SDK's `LocalAuthStore` writes to localStorage for session persistence across page loads)
-4. If the account's role requires MFA (see below), PocketBase issues a partial MFA token instead of a full session; the user completes an emailed one-time code before a real session is minted
-5. `getCurrentUser()` extracts role, `barangay_id`, and user data from the auth record
+1. User submits email/password (or completes a passkey ceremony — see below) via `login()` (`frontend/src/auth/session.ts`)
+2. GoTrue validates credentials and always returns a valid session — unlike PocketBase, a correct password alone is enough to sign in; there is no separate "partial MFA token" state
+3. The session (access + refresh token) is held by `@supabase/supabase-js`'s own client, which persists it to localStorage and refreshes it automatically; `initAuthSession()` hydrates a synchronous `cachedUser` at boot (awaited once in `App.tsx`) and keeps it current via `supabase.auth.onAuthStateChange(...)`, since every call site here expects `getCurrentUser()`/`isAuthenticated()` to answer synchronously
+4. If the account's role requires MFA (see below), `login()` itself checks the session's assurance level right after sign-in and, if it's below aal2, issues a challenge and returns `{ mfaRequired: true, factorId, challengeId }` instead of treating the user as fully signed in — the RLS layer (not the sign-in call) is what actually withholds data pre-aal2
+5. `getCurrentUser()` extracts role, `barangay_id`, and user data from the JWT's `app_metadata` (set by `custom_access_token_hook`, see below)
 6. Route guards (`ProtectedRoute`) check authentication status, user role, and (for `/platform-admin`) the platform-admin flag before rendering protected pages
 7. On session expiry, the user is redirected to the login page
 
+### The custom access token hook
+
+`role`, `barangay_id`, and `is_platform_admin` live in the `profiles` table (`backend/supabase/migrations/0002_profiles.sql`), not on the GoTrue-managed `auth.users` row itself. `custom_access_token_hook` (`backend/supabase/migrations/0003_custom_access_token_hook.sql`, wired into GoTrue via `GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED`/`_URI` in `docker-compose.yml`) runs on every token mint and copies those three fields from `profiles` into the JWT's `app_metadata`, which is what every RLS policy and `frontend/src/auth/session.ts`'s `getCurrentUser()` actually reads — the JWT is self-contained, so RLS policies never need a separate lookup against `profiles` per request.
+
 ### Multi-factor authentication (MFA)
 
-Configured declaratively in `backend/pb_migrations/1785000029_admin_mfa.js` via PocketBase's built-in MFA support (`usersColl.mfa`) — a second factor (password + emailed one-time code, 10-minute window) is required by rule, not by frontend logic, so it can't be bypassed by calling the API directly.
+TOTP authenticator-app MFA (`GOTRUE_MFA_TOTP_ENROLL_ENABLED`/`_VERIFY_ENABLED` in `docker-compose.yml`), gated at the RLS layer by `app.mfa_satisfied()` (`backend/supabase/migrations/0000_auth_helpers.sql`) — every RLS-facing claim helper (`current_barangay_id()`, `current_role()`, `is_platform_admin()`) funnels through it, so a session below the required assurance level collapses all three helpers to "nothing matches" and every policy denies, rather than needing a bolted-on MFA clause across every individual policy. This is a real mechanism change from PocketBase's email-OTP MFA (a password plus an emailed one-time code) to an authenticator-app TOTP code — GoTrue has no email-OTP-as-second-factor equivalent.
 
 ### Passkeys (WebAuthn)
 
-PocketBase has no native WebAuthn support, so the `webauthn` sidecar (`backend/webauthn-service/server.mjs`, Node + `@simplewebauthn/server`) owns the attestation/assertion cryptography. On successful verification it mints a real PocketBase session via the superuser impersonate API. Credentials are stored in the `webauthn_credentials` collection (`backend/pb_migrations/1785000032_webauthn_credentials.js`). Client-side ceremony helpers live in `frontend/src/auth/LoginPage.tsx` via `@simplewebauthn/browser`; users manage their registered passkeys from Settings.
+Neither PocketBase nor GoTrue has native WebAuthn support, so the `webauthn` sidecar (`backend/webauthn-service/server.mjs`, Node + `@simplewebauthn/server`) still owns the attestation/assertion cryptography, reaching the rest of the stack only through Kong (`SUPABASE_URL=http://kong:8000`), authenticated as `service_role`. On successful verification it mints a real session via GoTrue's admin API and the frontend completes it with `supabase.auth.setSession({ access_token, refresh_token })`. Credentials are stored in the `webauthn_credentials` table (`backend/supabase/migrations/0025_webauthn_credentials.sql`). Client-side ceremony helpers live in `frontend/src/auth/LoginPage.tsx` via `@simplewebauthn/browser`; users manage their registered passkeys from Settings.
 
-### Custom hook routes (`backend/pb_hooks/`)
+### Edge Functions (`backend/supabase/functions/`)
 
-PocketBase JS hook files (`*.pb.js`, loaded from `--hooksDir`) can register custom HTTP routes via `routerAdd()`, executed inside PocketBase's own JSVM with access to `$app` (mailer, settings, DB, outbound HTTP via `$http.send`), `$os` (env vars via `$os.getenv`), and `$apis` (auth middleware) — used for email notifications (`notify.pb.js`) and the Meilisearch search proxy (`search.pb.js`, see [Full-Text Search](#full-text-search-meilisearch) below). Three pitfalls verified empirically against a real PocketBase 0.39.5 instance, none obvious from the docs:
+Direct behavioral ports of PocketBase's `pb_hooks/*.pb.js` custom routes, now running as Deno Edge Functions dispatched by a single `main` router (`backend/supabase/functions/main/index.ts`) inside the self-hosted `edge-runtime` container — `notify-document-status`/`notify-hearing-scheduled` (email notifications) and `search-index`/`search-query` (the Meilisearch proxy, see [Full-Text Search](#full-text-search-meilisearch) below). A fifth function, `create-barangay-admin`, has no PocketBase equivalent — it exists only because Supabase requires the `service_role` key (never shippable to the frontend) to create an `auth.users` row, a capability PocketBase's rule-based `users` collection gave any authorized client for free.
 
-1. A `routerAdd` callback cannot reference a top-level `const`/`function` declared elsewhere in the file — only bindings declared *inside* the handler itself are visible when the route is actually dispatched (top-level references throw `ReferenceError: ... is not defined`, even though the file loads without error at startup). Top-level code that never runs inside a handler — e.g. one-time index setup — is unaffected and executes normally. Every handler in this repo's hooks is fully self-contained; see the comment in `notify.pb.js` before "DRY-ing up" shared logic across handlers.
-2. `e.bindBody(data)` must be called before `e.auth` is read in the same handler — reading `e.auth` first leaves the request body unreadable by the time `bindBody` runs, so every field silently binds to its zero value.
-3. A `DynamicModel` field declared with an object/array shape (e.g. `document: {}`) binds to a Go-backed wrapper, not a plain JS object — `data.document.id` silently reads as `undefined` even though the field is genuinely present (confirmed via `JSON.stringify`, which does see it correctly). Round-tripping through `JSON.parse(JSON.stringify(data.document))` turns it into a real plain object safe to use normally.
+Unlike PocketBase's JSVM hooks — which had a real, empirically-verified quirk where a `routerAdd` callback couldn't reference a top-level `const`/`function` declared elsewhere in the file, forcing every handler to stay fully self-contained — Deno's Edge Functions are ordinary ES modules with no such restriction; every function here freely imports shared helpers from `_shared/` (`auth.ts`, `cors.ts`, `http.ts`, `esc.ts`, `mailer.ts`, `documentTitle.ts`).
 
 ### Server-side rules
 
-Collection-level access rules are defined in PocketBase migration files at `backend/pb_migrations/`. These are JavaScript files that PocketBase executes on startup to configure collections and their access rules. Rules combine role checks with tenant scoping:
+Table-level Row-Level Security policies are defined in SQL migration files at `backend/supabase/migrations/`. Postgres executes these once, at migration time, to attach policies to each table; unlike PocketBase's rule strings (re-evaluated as an interpreted expression per request), these compile into the query planner. Policies combine role checks with tenant scoping via the shared helper functions in `0000_auth_helpers.sql`:
 
-```javascript
-// Staff can create and update within their own tenant, but not delete
-"createRule": "@request.body.barangay_id = @request.auth.barangay_id && (@request.auth.role = \"admin\" || @request.auth.role = \"staff\")",
-"updateRule": "barangay_id = @request.auth.barangay_id && (@request.auth.role = \"admin\" || @request.auth.role = \"staff\")",
-"deleteRule": "barangay_id = @request.auth.barangay_id && @request.auth.role = \"admin\""
+```sql
+-- Staff can create and update within their own tenant, but not delete
+create policy "staff can insert" on public.residents for insert
+  with check (barangay_id = app.current_barangay_id() and app.current_role() in ('admin', 'staff'));
+create policy "staff can update" on public.residents for update
+  using (barangay_id = app.current_barangay_id() and app.current_role() in ('admin', 'staff'));
+create policy "admin can delete" on public.residents for delete
+  using (barangay_id = app.current_barangay_id() and app.current_role() = 'admin');
 ```
 
 ## State Management
@@ -136,7 +157,7 @@ Collection-level access rules are defined in PocketBase migration files at `back
 No external state management library (Redux, Zustand, etc.) is used. The app relies entirely on React built-in features:
 
 - **React built-in state** — `useState`, `useEffect`, `useContext` for component-level and shared state
-- **PocketBase SDK client** — Singleton client (`frontend/src/api/client.ts`) as the single source of truth for authentication state. The `authStore` on the PocketBase client holds the current auth token and user data.
+- **`@supabase/supabase-js` client** — Singleton client (`frontend/src/lib/supabaseClient.ts`'s `getSupabase()`) as the source of truth for the real session; `frontend/src/auth/session.ts`'s module-level `cachedUser` mirrors it synchronously via `onAuthStateChange` for the call sites (route guards, `getCurrentUser()`) that need a non-async answer. Demo mode keeps its own separate singleton, the mock PocketBase client (`frontend/src/api/client.ts`'s `getClient()`), untouched.
 - **React Context providers** — `LanguageProvider` (`frontend/src/lib/i18n/`) for the EN/Tagalog/Cebuano UI language, `ThemeProvider` (`frontend/src/lib/theme.tsx`) for light/dark mode
 - **Custom hooks** — `useApiHealth()` for periodic server health polling (every 30 seconds), and feature-specific custom hooks for domain logic
 
@@ -148,14 +169,14 @@ A lightweight, dependency-free i18n system (no `react-i18next`) lives in `fronte
 
 ## Full-Text Search (Meilisearch)
 
-The dashboard search bar (`frontend/src/pages/hooks/useGlobalSearch.ts`) tries a Meilisearch-backed proxy first for residents, document requests, and blotter records, falling back to the original per-collection PocketBase `~` (prefix) query for everything else — and for those same three collections too, if the proxy reports it isn't configured (`{ configured: false }`) or the request fails outright. This makes Meilisearch a pure enhancement: a deployment that never sets it up gets exactly the pre-existing search behavior.
+The dashboard search bar (`frontend/src/pages/hooks/useGlobalSearch.ts`) tries a Meilisearch-backed proxy first for residents, document requests, and blotter records, falling back to the original per-table query for everything else — and for those same three tables too, if the proxy reports it isn't configured (`{ configured: false }`) or the request fails outright. This makes Meilisearch a pure enhancement: a deployment that never sets it up gets exactly the pre-existing search behavior.
 
-**The frontend never talks to Meilisearch directly.** Both directions go through authenticated PocketBase routes in `backend/pb_hooks/search.pb.js`:
+**The frontend never talks to Meilisearch directly.** Both directions go through the `search-index`/`search-query` Edge Functions (`backend/supabase/functions/search-index/`, `search-query/`), invoked via `supabase.functions.invoke(...)`:
 
-- `POST /api/search/index` — called by `frontend/src/api/searchSync.ts` after every create/update/delete in `residents.ts`/`documents.ts`/`blotter.ts` (same fire-and-forget, never-block-the-mutation pattern as `createActivity()`). The route overwrites whatever `barangay_id` the client sent with the authenticated session's own value before writing to Meilisearch — the one line that actually prevents a compromised frontend from indexing data under another tenant.
-- `POST /api/search/query` — called by `useGlobalSearch`. Builds a `barangay_id = "<session's tenant>"` filter server-side (never from the request) for every index searched, and additionally restricts which indexes a request is even allowed to touch based on the authenticated user's role (mirroring the same per-collection role rules used everywhere else — e.g. `viewer` can search residents/blotter but not documents).
+- `search-index` — called by `frontend/src/api/searchSync.ts` after every create/update/delete in `residents.ts`/`documents.ts`/`blotter.ts` (same fire-and-forget, never-block-the-mutation pattern as `createActivity()`). The function overwrites whatever `barangay_id` the client sent with the authenticated session's own value (from `requireUser(req)`) before writing to Meilisearch — the one line that actually prevents a compromised frontend from indexing data under another tenant.
+- `search-query` — called by `useGlobalSearch`. Builds a `barangay_id = "<session's tenant>"` filter server-side (never from the request) for every index searched, and additionally restricts which indexes a request is even allowed to touch based on the authenticated user's role (mirroring the same per-table role rules used everywhere else — e.g. `viewer` can search residents/blotter but not documents).
 
-Both index writes and index setup (creating each index with an explicit `primaryKey: "id"`, and marking `barangay_id` filterable) happen from the hook file using `$app.settings()`-independent env vars (`MEILI_URL`, `MEILI_MASTER_KEY`) via `$os.getenv` — the Meilisearch master key never leaves the backend. See `docs/DEPLOYMENT.md` "Full-text search (Meilisearch)" for the Docker Compose setup.
+Index setup (creating each index with an explicit `primaryKey: "id"`, and marking `barangay_id` filterable) happens once at deploy time via `backend/scripts/setup-search-indexes.mjs` — Edge Functions have no equivalent of PocketBase's "runs once on every boot" top-level hook code, since each invocation is its own stateless request. Both functions read `MEILI_URL`/`MEILI_MASTER_KEY` from their own environment (`backend/supabase/functions/.env.example`) — the Meilisearch master key never leaves the backend. See `docs/DEPLOYMENT.md` "Full-text search (Meilisearch)" for the Docker Compose setup.
 
 ## Code Splitting
 
@@ -165,22 +186,27 @@ Feature routes are lazy-loaded via `React.lazy()` in `frontend/src/routes/index.
 
 API modules in `frontend/src/api/` follow a consistent pattern:
 
-- Each PocketBase collection has a dedicated module (e.g., `residents.ts`, `documents.ts`, `blotter.ts`)
+- Each table has a dedicated module (e.g., `residents.ts`, `documents.ts`, `blotter.ts`)
 - Modules export typed async functions for each operation (create, read, update, delete, list with filters)
-- Functions return typed responses and use the shared PocketBase client from `getClient()`
+- Every function branches on `isDemoModeEnabled()`: the demo path is the original, unmodified PocketBase-shaped call through `getClient()` (the local-storage mock, `frontend/src/api/mockPocketBase.ts` — untouched by the Supabase migration, since demo mode is a self-contained sandbox with no real backend); the real path calls `supabase.from('table').select/insert/update/delete()`, `supabase.rpc(...)`, or `supabase.functions.invoke(...)` via `frontend/src/lib/supabaseClient.ts`'s `getSupabase()`
+- `.or()` filter strings (search/lookup queries) are built through `frontend/src/api/supabaseFilters.ts`'s `orIlike()`/`orEq()`, which escape values before interpolating them — closing a real filter-string-injection bug class PocketBase's own hand-built filter strings had
 - Errors are normalized through `frontend/src/api/errorHandler.ts`
-- A `beforeSend` hook on the shared client (`client.ts`) auto-stamps `barangay_id` on every record-create request — see [Multi-Tenancy](#multi-tenancy)
+- Real-mode inserts never set `barangay_id` themselves — every tenant-scoped table's column defaults to `app.current_barangay_id()` at the database level (see [Multi-Tenancy](#multi-tenancy)); demo mode's mock client still does its own equivalent stamping, unchanged
 
-There are **24 API modules** in total, covering all PocketBase collections used by the application.
+There are **26 API modules** that touch a backend at all (of ~29 total — `reports.ts` only composes other modules, `upload.ts` talks to Cloudinary, neither talks to the app's own backend), covering every table used by the application.
 
 ### Error handling hierarchy
 
-1. `ClientResponseError` (PocketBase SDK) — mapped to user-friendly messages:
+1. Demo mode's `ClientResponseError` (from the `pocketbase` npm package, still used only for the mock client) — mapped to user-friendly messages:
    - 429: "Rate limit exceeded. Please wait before trying again."
    - 403: "You do not have permission to perform this action."
    - 401: "Your session has expired. Please log in again." (auto-clears auth)
-2. `TypeError: Failed to fetch` — "Network error. Your changes will be saved offline and synced when the connection is restored."
-3. All other errors — Generic message with the original error attached for debugging
+2. Real mode's `AuthError` (`@supabase/supabase-js`) and duck-typed PostgREST/Postgres errors — mapped by status/code:
+   - Postgres `42501` (insufficient_privilege — an RLS policy rejected the request): "You do not have permission to perform this action."
+   - PostgREST `PGRST301`/`PGRST303` (JWT expired/invalid): "Your session has expired. Please log in again." (auto-clears auth)
+   - Postgres `23xxx` (constraint violation — unique/foreign-key/check): a field-level validation message
+3. `TypeError: Failed to fetch` — "Network error. Your changes will be saved offline and synced when the connection is restored."
+4. All other errors — Generic message with the original error attached for debugging
 
 ### Retry logic
 
@@ -201,23 +227,26 @@ Non-retryable errors (4xx except 429) are immediately passed to the error handle
 ```
 User Action
   |
-  +-- Auth: frontend/src/auth/session.ts -> PocketBase SDK -> REST API
+  +-- Auth: frontend/src/auth/session.ts -> @supabase/supabase-js -> GoTrue (via Kong)
   |
-  +-- API: frontend/src/api/{module}.ts -> getClient() -> PocketBase SDK -> REST API
+  +-- API: frontend/src/api/{module}.ts -> getSupabase() -> supabase-js -> PostgREST (via Kong)
+  |
+  +-- Realtime: useRealtimeCollection() -> supabase.channel(...).on('postgres_changes', ...) -> Realtime (via Kong)
   |
   +-- Offline: On network error -> enqueue() -> IndexedDB
-  |   +-- On reconnect -> flushQueue() -> REST API (FIFO order)
+  |   +-- On reconnect -> flushQueue() -> PostgREST (FIFO order)
   |
   +-- Error: handleApiError() -> ApiError -> UI notification (sonner toast)
 ```
 
 ## Data Model
 
-Core PocketBase collections (defined in `backend/pb_migrations/`). Every row below except `barangays` and `lookups` carries a `barangay_id` relation and is tenant-scoped by API rule.
+Core tables (defined in `backend/supabase/migrations/`). Every table below except `barangays` and `lookups` carries a `barangay_id` column and is tenant-scoped by RLS policy.
 
-| Collection | Type | Purpose |
+| Table | Type | Purpose |
 |------------|------|---------|
-| `users` | auth | User accounts with `role` field (admin/staff/viewer) + `barangay_id` |
+| `auth.users` | GoTrue-managed | Email/password credentials — no app-specific columns |
+| `profiles` | base | `role` (admin/staff/viewer) + `barangay_id` + `is_platform_admin`, one row per `auth.users` row |
 | `barangays` | base | Tenant registry — one row per onboarded barangay. Not tenant-scoped itself (a user can only see their own row) |
 | `residents` | base | Resident profiles with demographic tags (voter, senior, PWD, 4Ps, deceased) |
 | `households` | base | Family groupings with household head assignments |
@@ -235,14 +264,14 @@ Core PocketBase collections (defined in `backend/pb_migrations/`). Every row bel
 | `system_settings` | base | Key-value configuration store (`barangay_id` + `key` composite unique index) |
 | `appropriations` | base | Budget appropriations with expense class (PS/MOOE/CO) |
 | `fund_sources` | base | Fund sources with statutory rules (20% DF, SK, etc.) |
-| `revenues` | base | Revenue collections linked to income accounts |
+| `revenues` | base | Revenue collections; `fund_source` is plain text here (not a foreign key, unlike `appropriations.fund_source`) |
 | `disbursements` | base | Disbursement records |
 | `income_accounts` | base | Chart of accounts for revenue tracking |
 | `finance_audit_logs` | base | Finance-specific audit trail (separate from `activity_logs`) |
 | `webauthn_credentials` | base | Registered passkey public keys per user |
 | `lookups` | base | Shared reference/dropdown data (ethnicity, assistance types, etc.) — global, not tenant-scoped, seeded once |
 
-Total: **24 collections** — 1 auth collection + 23 base collections.
+Total: **24 tables** — 1 GoTrue-managed auth table + 23 application tables (`profiles` replaces PocketBase's single combined `users` collection, splitting GoTrue-managed credentials from app-specific fields).
 
 ## Finance Audit Trail
 
@@ -250,7 +279,7 @@ The finance module has a dedicated audit trail that logs every create/update/del
 
 ### Architecture decision
 
-Audit logging is implemented on the **frontend side** rather than in PocketBase hooks. During development, we discovered that PocketBase 0.39.5's hook events (`onRecordAfterCreate`, `onRecordAfterCreateRequest`, etc.) do not fire for REST API requests made through the JS SDK — they only fire for Admin UI operations or internal `dao.saveRecord()` calls. A frontend-side approach was chosen as the most reliable alternative.
+Audit logging is implemented on the **frontend side** rather than in a database trigger. This predates the Supabase migration: during PocketBase-era development, we discovered that PocketBase 0.39.5's hook events (`onRecordAfterCreate`, `onRecordAfterCreateRequest`, etc.) do not fire for REST API requests made through the JS SDK — they only fire for Admin UI operations or internal `dao.saveRecord()` calls. A frontend-side approach was chosen as the most reliable alternative, and carried over unchanged onto Supabase: `financeAudit.ts` still writes directly to `finance_audit_logs` via `supabase.from(...)` after each mutation, gated by the same RLS insert policy every other tenant-scoped table uses, rather than a Postgres trigger (which would have been a genuine, available alternative under Postgres that PocketBase never offered).
 
 ### How it works
 

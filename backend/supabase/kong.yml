@@ -1,10 +1,9 @@
-# Kong declarative config — the single public entry point for Phase 2's
-# auth+rest services, trimmed from the standard self-hosted Supabase
-# kong.yml down to what this phase needs (no /realtime, /storage, /functions
-# routes yet — those land with their own phases). `_transform: true` lets
-# Kong substitute the $SUPABASE_ANON_KEY / $SUPABASE_SERVICE_KEY env vars
-# (set in docker-compose.yml from this directory's .env) into the consumer
-# credentials below at load time.
+# Kong declarative config — the single public entry point for the full
+# Phase 6 stack (auth, rest, realtime, edge-runtime). Storage has no route
+# here — deliberately not stood up (see docker-compose.yml's own comment).
+# `_transform: true` lets Kong substitute the $SUPABASE_ANON_KEY /
+# $SUPABASE_SERVICE_KEY env vars (set in docker-compose.yml from this
+# directory's .env) into the consumer credentials below at load time.
 
 _format_version: "2.1"
 _transform: true
@@ -71,6 +70,51 @@ services:
         strip_path: true
         paths:
           - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  # Realtime's websocket upgrade + its own HTTP surface (tenant health
+  # check, etc). frontend/src/hooks/useRealtimeCollection.ts connects here
+  # via supabase-js's realtime client, same apikey requirement as rest-v1.
+  - name: realtime-v1
+    url: http://realtime:4000/socket/
+    routes:
+      - name: realtime-v1-route
+        strip_path: true
+        paths:
+          - /realtime/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  # Edge Functions (backend/supabase/functions/*, dispatched by
+  # functions/main). supabase.functions.invoke(...) calls
+  # (notifications.ts, searchSync.ts/useGlobalSearch.ts, platformAdmin.ts's
+  # createBarangayAdmin) all land here.
+  - name: functions-v1
+    url: http://edge-runtime:9000/
+    routes:
+      - name: functions-v1-route
+        strip_path: true
+        paths:
+          - /functions/v1/
     plugins:
       - name: cors
       - name: key-auth
