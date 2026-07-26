@@ -1,0 +1,97 @@
+# Phase 0 THROWAWAY spike stack — not the Phase 6 production compose file.
+# Minimum services needed to validate unknowns #2 (WebAuthn session-minting)
+# and #3 (Realtime + RLS), which need a real GoTrue/PostgREST/Realtime
+# process and cannot be verified with bare Postgres alone (see BUILD_NOTES.md
+# for why this couldn't be run inside the dev sandbox that authored it).
+#
+# Run on any machine with a working Docker daemon:
+#   cd backend/supabase-spike
+#   cp .env.example .env   # fill in the two secrets
+#   docker compose up -d
+#   docker compose logs -f
+#
+# Tear down when done — this whole directory's data is throwaway:
+#   docker compose down -v
+
+name: supabase-spike
+
+services:
+  db:
+    image: supabase/postgres:15.8.1.040
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spike-postgres-password}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "127.0.0.1:54322:5432"
+    volumes:
+      - ./auth-stubs.sql:/docker-entrypoint-initdb.d/00-auth-stubs-note.sql:ro
+      - ./auth-hook.sql:/docker-entrypoint-initdb.d/01-auth-hook.sql:ro
+      # supabase/postgres already ships the real `auth` schema helpers
+      # (auth.jwt(), auth.uid()) baked into the image, unlike bare Postgres —
+      # auth-stubs.sql is intentionally NOT mounted as a real init script
+      # here (see its own header comment); only auth-hook.sql needs to run.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://localhost:9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD:-spike-postgres-password}@db:5432/postgres
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/public/custom_access_token_hook
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+    ports:
+      - "127.0.0.1:9999:9999"
+
+  rest:
+    image: postgrest/postgrest:v12.2.8
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD:-spike-postgres-password}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "127.0.0.1:3001:3000"
+
+  realtime:
+    image: supabase/realtime:v2.34.47
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: postgres
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-spike-postgres-password}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      SLOT_NAME: supabase_realtime_spike
+      SECURE_CHANNELS: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      APP_NAME: realtime_spike
+    ports:
+      - "127.0.0.1:4000:4000"
