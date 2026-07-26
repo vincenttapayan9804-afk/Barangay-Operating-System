@@ -65,12 +65,20 @@ select app.verify_assert('handle_new_user trigger populated profiles',
 -- switching to authenticated/anon. Includes `sub`, which real GoTrue always
 -- populates itself (before calling any custom hook) — our hook only adds
 -- app_metadata, so the harness must supply `sub` the same way GoTrue would.
-create or replace function app.verify_claims_for(p_user_id uuid) returns jsonb
+--
+-- Also includes `aal` (Authenticator Assurance Level), default 'aal2' —
+-- i.e. every assertion below except the dedicated MFA-gating block further
+-- down simulates a session that has *already* completed any required
+-- second factor, so it exercises the same tenant/role logic Phase 1
+-- verified, unaffected by Phase 2's MFA gating in 0000_auth_helpers.sql
+-- (app.mfa_satisfied()). Pass p_aal := 'aal1' to simulate a session that
+-- hasn't completed MFA yet.
+create or replace function app.verify_claims_for(p_user_id uuid, p_aal text default 'aal2') returns jsonb
 language sql stable as $$
   select (public.custom_access_token_hook(jsonb_build_object(
     'user_id', p_user_id::text,
     'claims', jsonb_build_object(
-      'sub', p_user_id::text,
+      'sub', p_user_id::text, 'aal', p_aal,
       'aud','authenticated','role','authenticated','app_metadata','{}'::jsonb,'user_metadata','{}'::jsonb)
   )))->'claims';
 $$;
@@ -362,3 +370,132 @@ begin
 end $$;
 
 do $$ begin raise notice '=== ALL PHASE 1 ASSERTIONS PASSED ==='; end $$;
+
+-- ---------------------------------------------------------------------
+-- Phase 2: MFA gating (Hard Part #2) — app.mfa_satisfied() in
+-- 0000_auth_helpers.sql neuters current_barangay_id()/current_role()/
+-- is_platform_admin() whenever require_mfa is true and the session's own
+-- `aal` claim isn't 'aal2'. Proves the plan's Phase 2 "done when" bar: MFA
+-- gating actually blocks data access pre-aal2, not just that the helper
+-- functions exist unused (as they were left at the end of Phase 1).
+-- ---------------------------------------------------------------------
+
+-- 11. admin (always require_mfa=true per the hook): aal1 is blocked outright.
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000001', 'aal1') into claims; -- admin A, no MFA yet
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('admin pre-MFA (aal1): sees zero rows, not just their own tenant', cnt::text, '0');
+end $$;
+
+-- 12. Same admin, same tenant, only the aal differs: aal2 restores access.
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000001', 'aal2') into claims; -- admin A, MFA complete
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('admin post-MFA (aal2): sees tenant A''s 2 residents', cnt::text, '2');
+end $$;
+
+-- 13. Staff at a tenant with require_staff_mfa=false (Barangay A): not
+-- gated at all — aal1 behaves identically to aal2, matching
+-- 1785000033_mfa_extend_to_staff.js's opt-in-per-tenant design.
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002', 'aal1') into claims; -- staff A, no MFA
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('staff at non-MFA tenant, aal1: unaffected, still sees tenant A', cnt::text, '2');
+end $$;
+
+-- 14. Staff at a tenant with require_staff_mfa=true (Barangay B): gated
+-- exactly like an admin until aal2.
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('b0000000-0000-0000-0000-000000000001', 'aal1') into claims; -- staff B, no MFA
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('staff at MFA-required tenant, aal1: blocked', cnt::text, '0');
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('b0000000-0000-0000-0000-000000000001', 'aal2') into claims; -- staff B, MFA complete
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('staff at MFA-required tenant, aal2: sees tenant B''s 1 resident', cnt::text, '1');
+end $$;
+
+-- 15. The plan's exact "done when" wording: flip require_staff_mfa on a
+-- previously-unrequired tenant and prove staff there is gated immediately
+-- (no re-login, re-seed, or cache-bust needed — the flag is read live from
+-- public.barangays by the hook at token-mint time, but here we're testing
+-- that an *already-minted* claim's require_mfa reflects what the tenant
+-- required at mint time; the live-immediacy property that matters for RLS
+-- is that aal1 is rejected the instant require_mfa=true is present in the
+-- claim, which the assertion above already proves. This block additionally
+-- confirms the hook itself picks up the flip for the *next* token mint.)
+update public.barangays set require_staff_mfa = true
+  where id = '11111111-1111-1111-1111-111111111111';
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002', 'aal1') into claims; -- staff A, still no MFA
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.residents;
+  reset role;
+  perform app.verify_assert('after flipping require_staff_mfa live, staff A aal1 is now gated', cnt::text, '0');
+end $$;
+
+update public.barangays set require_staff_mfa = false
+  where id = '11111111-1111-1111-1111-111111111111';
+
+-- 16. is_platform_admin() is gated the same way, not just current_barangay_id()
+-- — a platform admin without aal2 sees nothing, not even their own tenant row.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('c0000000-0000-0000-0000-000000000001', 'platform-admin@example.com',
+    '{"role":"admin","barangay_id":"00000000-0000-0000-0000-000000000000","is_platform_admin":true}')
+on conflict (id) do nothing;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('c0000000-0000-0000-0000-000000000001', 'aal1') into claims; -- platform admin, no MFA
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.barangays;
+  reset role;
+  perform app.verify_assert('platform admin pre-MFA (aal1): sees zero barangays, not even their own', cnt::text, '0');
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('c0000000-0000-0000-0000-000000000001', 'aal2') into claims; -- platform admin, MFA complete
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.barangays;
+  reset role;
+  -- Barangay A + Barangay B + Platform Operations = 3
+  perform app.verify_assert('platform admin post-MFA (aal2): sees all 3 barangays', cnt::text, '3');
+end $$;
+
+do $$ begin raise notice '=== ALL PHASE 2 MFA-GATING ASSERTIONS PASSED ==='; end $$;

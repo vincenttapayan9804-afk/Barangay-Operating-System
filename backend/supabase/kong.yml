@@ -1,0 +1,84 @@
+# Kong declarative config — the single public entry point for Phase 2's
+# auth+rest services, trimmed from the standard self-hosted Supabase
+# kong.yml down to what this phase needs (no /realtime, /storage, /functions
+# routes yet — those land with their own phases). `_transform: true` lets
+# Kong substitute the $SUPABASE_ANON_KEY / $SUPABASE_SERVICE_KEY env vars
+# (set in docker-compose.yml from this directory's .env) into the consumer
+# credentials below at load time.
+
+_format_version: "2.1"
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: $SUPABASE_ANON_KEY
+  - username: service_role
+    keyauth_credentials:
+      - key: $SUPABASE_SERVICE_KEY
+
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+services:
+  # GoTrue's own /verify and /callback endpoints are hit by end users
+  # following an emailed link *before* they have any apikey at all — must
+  # stay open, unlike every other auth route.
+  - name: auth-v1-open
+    url: http://auth:9999/verify
+    routes:
+      - name: auth-v1-open-route
+        strip_path: true
+        paths:
+          - /auth/v1/verify
+    plugins:
+      - name: cors
+
+  - name: auth-v1-open-callback
+    url: http://auth:9999/callback
+    routes:
+      - name: auth-v1-open-callback-route
+        strip_path: true
+        paths:
+          - /auth/v1/callback
+    plugins:
+      - name: cors
+
+  # Everything else under /auth/v1 (token, admin/*, factors, logout, ...)
+  # requires an apikey — anon for the ordinary login/refresh/factor
+  # endpoints, service_role for /admin/* (bootstrap-platform-admin.mjs and
+  # the future invite-staff Edge Function).
+  - name: auth-v1
+    url: http://auth:9999/
+    routes:
+      - name: auth-v1-route
+        strip_path: true
+        paths:
+          - /auth/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+
+  - name: rest-v1
+    url: http://rest:3000/
+    routes:
+      - name: rest-v1-route
+        strip_path: true
+        paths:
+          - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon

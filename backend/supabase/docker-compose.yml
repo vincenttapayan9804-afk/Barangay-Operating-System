@@ -1,0 +1,129 @@
+# Phase 2 auth-layer stack: db + auth (GoTrue) + rest (PostgREST) + kong.
+# Not the full Phase 6 production compose (no realtime/storage/edge-runtime
+# yet — those are later phases per docs/SUPABASE_MIGRATION_PLAN.md). This is
+# the stack whose "done when" bar is: MFA gating is provably live end-to-end
+# through a real GoTrue login, not just at the SQL layer.
+#
+# Run on any machine with a working Docker daemon (this sandbox has none —
+# see PHASE2_NOTES.md):
+#   cd backend/supabase
+#   cp .env.example .env
+#   node ../scripts/generate-supabase-keys.mjs   # fills in ANON_KEY/SERVICE_ROLE_KEY
+#   docker compose up -d
+#   node ../scripts/bootstrap-platform-admin.mjs
+#
+# Migrations (0000-0026) are mounted straight into docker-entrypoint-initdb.d
+# — the real supabase/postgres image already ships the auth schema, the
+# anon/authenticated/service_role/supabase_auth_admin roles, and the default
+# grants backend/supabase/verify/00_test_env.sql + 01_grants.sql exist only
+# to fake for bare Postgres, so neither is mounted here.
+
+name: barangay-supabase
+
+services:
+  db:
+    image: supabase/postgres:15.8.1.040
+    container_name: barangay-supabase-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "127.0.0.1:54322:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
+      # supabase/postgres only auto-runs *.sql directly inside
+      # docker-entrypoint-initdb.d, not subdirectories — this tiny wrapper
+      # applies migrations/*.sql in filename order on first boot.
+      - ./init-migrations.sh:/docker-entrypoint-initdb.d/00-init-migrations.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    container_name: barangay-supabase-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:5173}
+      GOTRUE_URI_ALLOW_LIST: ${URI_ALLOW_LIST:-}
+      # No open self-registration — matches PocketBase today. New accounts
+      # are provisioned only via the admin API (bootstrap-platform-admin.mjs,
+      # and later the in-app "invite staff" flow via a service-role Edge
+      # Function), never GoTrue's own /signup endpoint.
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/public/custom_access_token_hook
+      # TOTP authenticator-app MFA (Hard Part #2's decision — see
+      # docs/SUPABASE_MIGRATION_PLAN.md's "Open decision" section). GoTrue
+      # issues an aal1 session on ordinary password login regardless of role;
+      # 0000_auth_helpers.sql's app.mfa_satisfied() is what actually blocks
+      # data access at the RLS layer until the session is upgraded to aal2
+      # via POST /auth/v1/factors -> /challenge -> /verify.
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_MFA_TOTP_ISSUER: ${WEBAUTHN_RP_NAME:-CLUSTR Barangay OS}
+      # Mailer: admin-created users are pre-confirmed via the admin API's
+      # email_confirm:true (see bootstrap-platform-admin.mjs), so no SMTP
+      # dependency for account creation itself. Real SMTP is only needed
+      # later for password-recovery emails — deferred the same way
+      # Meilisearch's MEILI_MASTER_KEY is deferred (no-op until set).
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-}
+    ports:
+      - "127.0.0.1:9999:9999"
+
+  rest:
+    image: postgrest/postgrest:v12.2.8
+    container_name: barangay-supabase-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+
+  kong:
+    image: kong:2.8
+    container_name: barangay-supabase-kong
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    volumes:
+      - ./kong.yml:/kong.yml:ro
+    ports:
+      - "8000:8000"
+
+volumes:
+  db_data:

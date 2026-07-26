@@ -82,3 +82,18 @@ create policy <table>_delete on public.<table> for delete
 
 A PocketBase rule of `null` (nobody, not even superuser-bypassed-API) becomes: no policy for that
 command at all — RLS defaults deny-all once enabled, a clean 1:1 mapping, same as the plan states.
+
+## MFA gating (added in Phase 2, `0000_auth_helpers.sql`)
+
+`app.has_aal2()`/`app.requires_mfa()` existed since Phase 1 but were unused by any policy. Phase 2
+wires them up via a new `app.mfa_satisfied()` function that every claim helper used across
+`0001-0026` (`current_barangay_id()`, `current_role()`, `is_platform_admin()`) now funnels through:
+when a session's `require_mfa` claim is true but its `aal` claim isn't `aal2`, all three helpers
+collapse to a value that satisfies no policy, denying access everywhere in one place instead of
+retrofitting an MFA clause onto ~90 individual policies. This reproduces PocketBase's `mfa.rule`
+(`1785000029_admin_mfa.js`/`1785000033_mfa_extend_to_staff.js`) — which blocked the entire session
+until the second factor completed — on top of GoTrue's own model, where login always issues an aal1
+token regardless of role and MFA is enforced by whoever reads the session, not by GoTrue itself. See
+`backend/supabase/PHASE2_NOTES.md` for the verification run (21 Phase 1 assertions unchanged + 8 new
+MFA-gating assertions, including the plan's literal "flip `require_staff_mfa`, staff gets gated
+immediately" wording).
