@@ -4,7 +4,7 @@
     <strong>A modern document and records management system for Philippine Barangay LGUs</strong>
   </p>
   <p align="center">
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-red.svg" alt="License: Proprietary"></a>
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB" alt="React 19"></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-6-3178C6" alt="TypeScript 6"></a>
     <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646CFF" alt="Vite 8"></a>
@@ -17,11 +17,6 @@
     <a href="https://github.com/rodneydelacruz/barangayos/issues"><img src="https://img.shields.io/github/issues/rodneydelacruz/barangayos" alt="Issues"></a>
   </p>
 
-  <br>
-  <p>
-    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
-    <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa" alt="Contributor Covenant"></a>
-  </p>
 </div>
 
 ---
@@ -30,14 +25,13 @@
 
 BarangayOS is a comprehensive, offline-capable web application purpose-built for **Philippine Barangay Local Government Units (LGUs)**. It replaces paper-based record keeping with a modern, digital system that works even when the internet is unreliable.
 
-**The problem:** Most barangay offices still rely on paper records, standalone Excel files, or expensive proprietary software. Internet connectivity in many areas is intermittent. BarangayOS solves this by providing a free, open-source system that works offline and syncs when connectivity is available.
+**The problem:** Most barangay offices still rely on paper records, standalone Excel files, or expensive proprietary software. Internet connectivity in many areas is intermittent. BarangayOS is a licensed, commercially supported platform that works offline and syncs when connectivity is available.
 
 ### Who is this for?
 
 - **Barangay Secretaries & Staff** — Manage residents, documents, blotter cases, and daily operations
 - **Barangay Captains & Councilors** — Access reports, approve documents, track finances
 - **IT Administrators** — Deploy, configure, and maintain the system
-- **Developers** — Contribute features, fix bugs, customize for local needs
 
 ## Features
 
@@ -174,15 +168,15 @@ barangayos/
 │   ├── ARCHITECTURE.md        # System design and data flow
 │   ├── DEVELOPMENT.md         # Local setup and coding standards
 │   ├── DEPLOYMENT.md          # Production deployment guide
-│   ├── CONTRIBUTING.md        # How to contribute
+│   ├── CONTRIBUTING.md        # Engineering contribution workflow
 │   └── SECURITY.md            # Security policy
-├── .github/                   # GitHub community health files
+├── .github/                   # GitHub workflow/PR files
 │   ├── workflows/ci.yml       # CI pipeline
 │   ├── ISSUE_TEMPLATE/        # Bug report and feature request templates
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── CHANGELOG.md               # Version history
-├── CODE_OF_CONDUCT.md         # Contributor Covenant
-└── LICENSE                    # MIT License
+├── CODE_OF_CONDUCT.md         # Team conduct standards
+└── LICENSE                    # Proprietary license
 ```
 
 ## Documentation
@@ -192,7 +186,7 @@ barangayos/
 | [Architecture Guide](docs/ARCHITECTURE.md) | System design, data flow, smart URL resolution, offline architecture |
 | [Development Guide](docs/DEVELOPMENT.md) | Local setup, coding standards, testing, building |
 | [Deployment Guide](docs/DEPLOYMENT.md) | Production deployment with Docker, Cloudflare Tunnel, and more |
-| [Contributing Guide](docs/CONTRIBUTING.md) | How to contribute, code style, PR process |
+| [Contributing Guide](docs/CONTRIBUTING.md) | Engineering workflow, code style, PR process |
 | [Security Policy](docs/SECURITY.md) | Reporting vulnerabilities, security best practices |
 | [Privacy Notice](docs/PRIVACY_NOTICE.md) | Data privacy notice for residents under RA 10173 |
 | [Terms of Use](docs/TERMS_OF_USE.md) | Acceptable use policy for Barangay staff |
@@ -235,23 +229,22 @@ npm run build
 
 > Suggest and vote on features via [GitHub Issues](https://github.com/rodneydelacruz/barangayos/issues/new?template=feature_request.md).
 
-## Contributing
+## Support
 
-We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.md) for details.
-
-- [Report a bug](https://github.com/rodneydelacruz/barangayos/issues/new?template=bug_report.md)
-- [Request a feature](https://github.com/rodneydelacruz/barangayos/issues/new?template=feature_request.md)
-- Read the [Code of Conduct](CODE_OF_CONDUCT.md)
+This is commercially licensed software. For bug reports, feature requests, or account/licensing
+questions, contact your CLUSTR account representative.
 
 ## License
 
-This project is [MIT](LICENSE) licensed — see the [LICENSE](LICENSE) file for details.
+CLUSTR is proprietary software, licensed under a paid subscription — see the [LICENSE](LICENSE)
+file for details. It is not open source and may not be copied, redistributed, or self-hosted
+outside the terms of a signed license agreement.
 
 ## Acknowledgments
 
 - Built for every Barangay in the Philippines
-- [Supabase](https://supabase.com/) — The open-source backend platform this project self-hosts
-- [Cloudflare](https://www.cloudflare.com/) — For their generous free-tier tunnel and R2 services
+- [Supabase](https://supabase.com/) — the open-source backend platform this project self-hosts (Supabase's own license, not CLUSTR's)
+- [Cloudflare](https://www.cloudflare.com/) — for their generous free-tier tunnel and R2 services
 - All barangay secretaries and staff who provided invaluable domain expertise
 
 ---

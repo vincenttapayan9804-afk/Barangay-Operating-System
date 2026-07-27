@@ -247,7 +247,7 @@ NPC Complaint Hotline: (02) 8234-2222
 
 This Privacy Notice may be updated periodically to reflect changes in the system, applicable laws, or NPC regulations. The current version is always available from the Barangay Secretary or posted at the Barangay Hall. Significant changes will be announced through the Barangay's usual communication channels.
 
-The system is built on **BarangayOS**, an open-source project available at [github.com/rodneydelacruz/barangay-system](https://github.com/rodneydelacruz/barangay-system). Each Barangay runs its own independent installation and is solely responsible for the data it processes.
+The system is built on **BarangayOS (CLUSTR)**, a commercially licensed platform. Each Barangay runs its own independent installation and is solely responsible for the data it processes.
 
 ---
 

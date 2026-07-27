@@ -68,20 +68,28 @@ Overlaps heavily with the Philippine Data Privacy Act (RA 10173) work already do
 `docs/PRIVACY_NOTICE.md` and `docs/DATA_PROCESSING_AGREEMENT.md`. Phase 1's data classification
 doc is the missing "Identify-P" piece; Phase 3's DLP masking is the "Protect-P" piece.
 
-## OWASP Open Source Security
+## Dependency & Supply Chain Security (OWASP Open Source Security guidance)
 
-Covered by: `npm audit` + Trivy (known-vulnerability scanning) already in CI, plus Phase 1's new
-SBOM/license-scanning job (below) for supply-chain transparency.
+Covers the security of *third-party open-source dependencies this proprietary codebase consumes*
+— not a claim about CLUSTR's own license. Covered by: `npm audit` + Trivy (known-vulnerability
+scanning) already in CI, plus Phase 1's SBOM/license-scanning job (below) for supply-chain
+transparency.
 
 ## OpenChain (ISO/IEC 5230 & ISO/IEC 18974)
 
+⛔ **Not applicable.** OpenChain certifies an organization's *open-source* license-compliance
+program. CLUSTR is proprietary, commercially licensed software (see root `LICENSE`) — this
+framework does not apply to it. The dependency controls below remain in place regardless, since
+they protect against copyleft-license contamination of the proprietary codebase, not because
+CLUSTR itself pursues OpenChain conformance.
+
 | Requirement | Status |
 |---|---|
-| Declared license (MIT) | ✅ Root `LICENSE` |
-| No copyleft (GPL/AGPL) dependencies | ✅ Verified — 0 matches across `frontend` and `backend/webauthn-service` |
+| CLUSTR's own license | Proprietary — see root `LICENSE`; not open source |
+| No copyleft (GPL/AGPL) dependencies pulled into the proprietary codebase | ✅ Verified — 0 matches across `frontend` and `backend/webauthn-service` |
 | SBOM generation | ✅ Phase 1 |
-| License-compliance CI gate | ✅ Phase 1 (fails build on GPL/AGPL) |
-| Formal OpenChain conformance self-certification | 📋 An administrative self-declaration submitted to the OpenChain project once the above are in place — not a code change |
+| License-compliance CI gate | ✅ Phase 1 (fails build on GPL/AGPL dependencies) |
+| Formal OpenChain conformance self-certification | ⛔ Not applicable — OpenChain is for open-source projects |
 
 ## CSA STAR Level 1 / UK Cyber Essentials / Essential Eight (Australian ACSC)
 
