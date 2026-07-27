@@ -11,7 +11,16 @@ let client: SupabaseClient | null = null
 export function getSupabase(): SupabaseClient {
   if (!client) {
     client = createClient(getApiUrl(), import.meta.env.VITE_SUPABASE_ANON_KEY ?? '', {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        // PKCE over the implicit flow — no code/token is ever exposed in a
+        // URL fragment, even though this app doesn't currently use OAuth
+        // redirects (password + MFA only). Cheap to set now, and required
+        // if an OAuth/magic-link flow is ever added later.
+        flowType: 'pkce',
+      },
     })
   }
   return client
