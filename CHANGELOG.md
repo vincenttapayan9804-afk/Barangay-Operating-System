@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Relicensed from MIT (open source) to a proprietary, commercially licensed model. See root
+  `LICENSE`; the platform is no longer free or open source.
+
 ### Added
 
-- Initial open-source release
-- MIT License
 - Contributor Covenant Code of Conduct
 - Complete documentation suite (architecture, development, deployment, security, contributing guides)
 - CI/CD pipeline configuration (GitHub Actions)

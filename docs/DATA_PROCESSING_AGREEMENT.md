@@ -34,7 +34,7 @@ This Data Processing Agreement ("DPA") is entered into by and between:
 
 1.6 **"Sub-processor"** means a third party engaged by the Processor to process Personal Data on behalf of the Controller, with the Controller's prior written authorization.
 
-1.7 **"BarangayOS"** means the open-source Barangay Records Management System software, including its frontend application, PocketBase backend, and associated components.
+1.7 **"BarangayOS"** means the proprietary, commercially licensed Barangay Records Management System software (branded CLUSTR), including its frontend application, self-hosted Supabase backend, and associated components.
 
 ---
 
@@ -343,16 +343,16 @@ This DPA may be executed in counterparts. Both parties confirm that they have re
 
 | Attribute | Detail |
 |-----------|--------|
-| **Software** | BarangayOS (open-source) |
-| **Repository** | [github.com/rodneydelacruz/barangay-system](https://github.com/rodneydelacruz/barangay-system) |
+| **Software** | BarangayOS (CLUSTR) — proprietary, commercially licensed |
+| **Repository** | Proprietary; source access governed by license agreement |
 | **Frontend** | React 19, TypeScript, Vite, Tailwind CSS |
-| **Backend** | PocketBase 0.39.5 (Go binary, SQLite) |
-| **Authentication** | Email/password via PocketBase auth |
-| **Database** | SQLite (embedded, via PocketBase) |
-| **Encryption at rest** | Optional (PB_ENCRYPTION_KEY) |
+| **Backend** | Self-hosted Supabase stack (GoTrue auth, PostgREST API, Kong gateway, Realtime, Edge Functions) |
+| **Authentication** | Email/password with TOTP/WebAuthn MFA, via GoTrue |
+| **Database** | PostgreSQL, with row-level security (RLS) enforcing per-barangay tenant isolation |
+| **Encryption at rest** | Deployment-dependent (Postgres volume/disk encryption) |
 | **Encryption in transit** | HTTPS/TLS |
 | **Offline storage** | IndexedDB (temporary write queue, auto-synced) |
-| **Optional third-party** | Cloudinary (image hosting), Cloudflare (network/CDN) |
+| **Optional third-party** | Cloudinary (signed image uploads), Cloudflare (network/CDN), SMTP provider (notifications) |
 
 ---
 
@@ -388,4 +388,4 @@ Barangay Staff / Admin
 
 ---
 
-*This Data Processing Agreement is a template provided with the BarangayOS open-source project. It should be reviewed by legal counsel, adapted to the specific deployment and processing activities, and executed between the relevant parties. It does not constitute legal advice.*
+*This Data Processing Agreement is a template provided with the BarangayOS (CLUSTR) commercial platform. It should be reviewed by legal counsel, adapted to the specific deployment and processing activities, and executed between the relevant parties. It does not constitute legal advice.*

@@ -16,7 +16,6 @@ import {
   Lock,
   Building2,
   CheckCircle2,
-  Code2,
   Zap,
   ChevronDown,
   Menu,
@@ -53,7 +52,7 @@ const capabilities = [
   'Tamper-Evident Audit Trail',
   'Offline-First Sync',
   'Installable PWA',
-  'Open Source · MIT',
+  'Dedicated Onboarding & Support',
 ]
 
 const features = [
@@ -197,8 +196,8 @@ const aboutValues = [
   },
   {
     icon: Sparkles,
-    title: 'Open by Default',
-    description: 'MIT-licensed and open source — inspect the code, self-host it, or extend it for your LGU’s needs.',
+    title: 'Built to Last',
+    description: 'A commercially licensed, vendor-supported platform with continuous updates, maintenance, and a dedicated support team behind it.',
   },
 ]
 
@@ -237,7 +236,7 @@ const faqs = [
   },
   {
     q: 'How much does CLUSTR cost?',
-    a: 'CLUSTR itself is free and open source under the MIT license — no license fees, no vendor lock-in. Your only real cost is hosting, and CLUSTR is built to run comfortably on free-tier cloud infrastructure.',
+    a: 'CLUSTR is offered as a licensed subscription platform, with pricing scoped to your barangay’s size and deployment needs. Contact us for a quote.',
   },
   {
     q: 'Can staff install CLUSTR like a regular app?',
@@ -248,8 +247,8 @@ const faqs = [
     a: 'Onboarding a new barangay is a short, guided setup — your platform administrator creates your barangay’s workspace and first admin account, and your team signs in and starts working immediately. No infrastructure knowledge required to use it day-to-day.',
   },
   {
-    q: 'Can we self-host CLUSTR instead of using a shared instance?',
-    a: 'Yes. Because CLUSTR is open source, your LGU’s IT staff or a technology partner can deploy and run their own instance independently, with full control over hosting and data residency.',
+    q: 'Can we run a dedicated, single-tenant deployment instead of a shared instance?',
+    a: 'Yes — a dedicated deployment is available as part of an enterprise license, giving your LGU a fully isolated instance with control over hosting and data residency.',
   },
 ]
 
@@ -627,7 +626,6 @@ export default function LandingPage() {
               { icon: Lock, label: 'SHA-256 Tamper-Evident Audit Logs' },
               { icon: Building2, label: 'Multi-Tenant Isolation, Test-Verified' },
               { icon: WifiOff, label: 'Offline-First Architecture' },
-              { icon: Code2, label: 'Open Source · MIT' },
             ].map((badge, i) => (
               <Reveal key={badge.label} delay={i * 0.05}>
                 <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-display text-xs font-medium text-foreground shadow-sm">
@@ -638,44 +636,11 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <Reveal delay={0.15}>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <a href={`${REPO_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={`https://img.shields.io/github/license/${REPO}?color=00D9A3&label=License`}
-                  alt="License"
-                  className="h-5"
-                />
-              </a>
-              <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={`https://img.shields.io/github/stars/${REPO}?color=00D9A3&label=Stars&style=flat`}
-                  alt="GitHub stars"
-                  className="h-5"
-                />
-              </a>
-              <a href={`${REPO_URL}/commits/main`} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={`https://img.shields.io/github/last-commit/${REPO}?color=00D9A3&label=Last%20Commit`}
-                  alt="Last commit"
-                  className="h-5"
-                />
-              </a>
-              <a href={`${REPO_URL}/network/members`} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={`https://img.shields.io/github/forks/${REPO}?color=00D9A3&label=Forks`}
-                  alt="Forks"
-                  className="h-5"
-                />
-              </a>
-            </div>
-          </Reveal>
-
           <Reveal delay={0.2}>
             <p className="mx-auto mt-8 max-w-2xl text-center font-display text-sm text-muted-foreground">
               Built for the Philippines' <span className="font-semibold text-foreground">42,000+ barangays</span> —
               a single platform designed to scale from one barangay office to hundreds, with every
-              claim above enforced in code and verifiable in the public repository.
+              claim above enforced in code, not just promised in marketing.
             </p>
           </Reveal>
         </div>
@@ -878,8 +843,8 @@ export default function LandingPage() {
             Real Integrations, Not Vaporware
           </h2>
           <p className="mt-4 font-display text-base text-muted-foreground">
-            Every integration below ships in the codebase today — inspect it, self-host it, or
-            verify it yourself in the public repository.
+            Every integration below ships in the codebase today and is running in production —
+            not a roadmap promise.
           </p>
         </Reveal>
 
