@@ -122,7 +122,11 @@ async function fetchCollectionData(collection: ExportCollection): Promise<Record
   }
 }
 
-interface FieldDef { key: string; label: string; format?: 'date' | 'datetime' | 'currency' }
+// `sensitive: true` marks fields classified Sensitive in
+// docs/DATA_CLASSIFICATION.md — redacted by default in exports, only
+// included when the caller explicitly opts in (ExportBar.tsx's admin-only
+// "include sensitive fields" checkbox), matching that doc's handling rule.
+interface FieldDef { key: string; label: string; format?: 'date' | 'datetime' | 'currency'; sensitive?: boolean }
 
 const FIELD_DEFS: Record<ExportCollection, FieldDef[]> = {
   residents: [
@@ -133,12 +137,12 @@ const FIELD_DEFS: Record<ExportCollection, FieldDef[]> = {
     { key: 'age', label: 'Age' },
     { key: 'sex', label: 'Sex' },
     { key: 'date_of_birth', label: 'Date of Birth', format: 'date' },
-    { key: 'mobile_number', label: 'Mobile Number' },
+    { key: 'mobile_number', label: 'Mobile Number', sensitive: true },
     { key: 'civil_status', label: 'Civil Status' },
-    { key: 'sitio_purok', label: 'Sitio / Purok' },
+    { key: 'sitio_purok', label: 'Sitio / Purok', sensitive: true },
     { key: 'profession_occupation', label: 'Occupation' },
     { key: 'nationality', label: 'Nationality' },
-    { key: 'blood_type', label: 'Blood Type' },
+    { key: 'blood_type', label: 'Blood Type', sensitive: true },
     { key: 'registered_voter', label: 'Registered Voter' },
     { key: 'senior_citizen', label: 'Senior Citizen' },
     { key: 'pwd', label: 'PWD' },
@@ -172,13 +176,13 @@ const FIELD_DEFS: Record<ExportCollection, FieldDef[]> = {
     { key: 'case_number', label: 'Case Number' },
     { key: 'incident_type', label: 'Incident Type' },
     { key: 'complainant_name', label: 'Complainant Name' },
-    { key: 'complainant_contact', label: 'Complainant Contact' },
+    { key: 'complainant_contact', label: 'Complainant Contact', sensitive: true },
     { key: 'respondent_name', label: 'Respondent Name' },
-    { key: 'respondent_contact', label: 'Respondent Contact' },
+    { key: 'respondent_contact', label: 'Respondent Contact', sensitive: true },
     { key: 'incident_date', label: 'Incident Date', format: 'date' },
     { key: 'incident_location', label: 'Incident Location' },
-    { key: 'narrative', label: 'Narrative' },
-    { key: 'involved_parties', label: 'Involved Parties' },
+    { key: 'narrative', label: 'Narrative', sensitive: true },
+    { key: 'involved_parties', label: 'Involved Parties', sensitive: true },
     { key: 'status', label: 'Status' },
     { key: 'action_taken', label: 'Action Taken' },
     { key: 'created', label: 'Created', format: 'datetime' },
@@ -220,7 +224,10 @@ const FIELD_DEFS: Record<ExportCollection, FieldDef[]> = {
   ],
 }
 
-function formatCellValue(val: unknown, field: FieldDef): string | number | boolean {
+const REDACTED_PLACEHOLDER = '••• Redacted •••'
+
+function formatCellValue(val: unknown, field: FieldDef, includeSensitive: boolean): string | number | boolean {
+  if (field.sensitive && !includeSensitive) return val === null || val === undefined || val === '' ? '' : REDACTED_PLACEHOLDER
   if (val === null || val === undefined) return ''
   if (typeof val === 'boolean') return val ? 'Yes' : 'No'
   if (field.format === 'date' && typeof val === 'string') return val.split('T')[0] || val.substring(0, 10)
@@ -236,7 +243,15 @@ function formatCellValue(val: unknown, field: FieldDef): string | number | boole
   return String(val)
 }
 
-export async function exportWorkbook(collection: ExportCollection, dateRange: DateRange): Promise<void> {
+export function collectionHasSensitiveFields(collection: ExportCollection): boolean {
+  return FIELD_DEFS[collection].some((f) => f.sensitive)
+}
+
+export async function exportWorkbook(
+  collection: ExportCollection,
+  dateRange: DateRange,
+  includeSensitive = false,
+): Promise<void> {
   const bounds = getDateRangeBounds(dateRange)
   const dateField = DATE_FIELDS[collection]
   const allData = await fetchCollectionData(collection)
@@ -253,7 +268,7 @@ export async function exportWorkbook(collection: ExportCollection, dateRange: Da
   const ws = wb.addWorksheet(COLLECTION_LABELS[collection])
 
   const records = filtered as Record<string, unknown>[]
-  const dataRows = records.map((r) => fields.map((f) => formatCellValue(r[f.key], f)))
+  const dataRows = records.map((r) => fields.map((f) => formatCellValue(r[f.key], f, includeSensitive)))
   const headers = fields.map((f) => f.label)
 
   ws.addRow(headers)

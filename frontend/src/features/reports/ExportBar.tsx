@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import { exportWorkbook, type ExportCollection, type DateRange } from './useExportWorkbook'
+import { exportWorkbook, collectionHasSensitiveFields, type ExportCollection, type DateRange } from './useExportWorkbook'
 import { toast } from '@/lib/toast'
+import { hasRole } from '@/auth/session'
+import { createActivity } from '@/api/activity'
 
 const COLLECTION_MAP: Record<string, ExportCollection> = {
   demographics: 'residents',
@@ -28,8 +30,10 @@ export default function ExportBar({ activeTab }: { activeTab: string }) {
   const [preset, setPreset] = useState<string>('all')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [includeSensitive, setIncludeSensitive] = useState(false)
   const [exporting, setExporting] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const isAdmin = hasRole('admin')
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -60,9 +64,15 @@ export default function ExportBar({ activeTab }: { activeTab: string }) {
       dateRange = { preset } as DateRange
     }
 
+    const withSensitive = isAdmin && includeSensitive
     setExporting(true)
     try {
-      await exportWorkbook(collection, dateRange)
+      await exportWorkbook(collection, dateRange, withSensitive)
+      // Data-classification handling rule: including Sensitive-tier fields
+      // in an export is itself an auditable action, not a silent toggle.
+      if (withSensitive) {
+        void createActivity('update', collection, 'export', `Exported ${collection} with sensitive fields included`)
+      }
     } catch {
       toast.error('An error occurred while exporting.')
     } finally {
@@ -103,6 +113,18 @@ export default function ExportBar({ activeTab }: { activeTab: string }) {
                 <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Start date" />
                 <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} placeholder="End date" />
               </div>
+            )}
+
+            {isAdmin && collectionHasSensitiveFields(collection) && (
+              <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSensitive}
+                  onChange={(e) => setIncludeSensitive(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary"
+                />
+                <span>Include sensitive fields in this export — this action is logged.</span>
+              </label>
             )}
 
             <Button onClick={handleExport} disabled={exporting} className="w-full gap-1.5">

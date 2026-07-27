@@ -3,6 +3,7 @@ import { getSupabase } from '@/lib/supabaseClient'
 import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { getCurrentUser } from '@/auth/session'
 import { handleApiError } from './errorHandler'
+import { redactSensitiveText } from '@/lib/dlp'
 import type { BaseRecord } from './types'
 
 export interface ApiActivity extends BaseRecord {
@@ -53,6 +54,7 @@ export async function createActivity(
   recordId: string,
   details: string,
 ): Promise<void> {
+  const safeDetails = redactSensitiveText(details)
   try {
     if (isDemoModeEnabled()) {
       const user = getClient().authStore.model as Record<string, unknown> | null
@@ -61,7 +63,7 @@ export async function createActivity(
         action,
         collection,
         record_id: recordId,
-        details,
+        details: safeDetails,
         user_name: userName,
       })
       return
@@ -73,7 +75,7 @@ export async function createActivity(
       action,
       collection,
       record_id: recordId,
-      details,
+      details: safeDetails,
       user_name: userName,
     })
   } catch {

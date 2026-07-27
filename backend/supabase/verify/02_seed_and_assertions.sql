@@ -539,3 +539,74 @@ begin
 end $$;
 
 do $$ begin raise notice '=== ALL PHASE 3 RPC-GRANT ASSERTIONS PASSED ==='; end $$;
+
+-- ---------------------------------------------------------------------
+-- Security Phase 3: activity_logs / finance_audit_logs hash-chain
+-- integrity (0030_audit_log_hash_chain.sql). Inserts a short chain, proves
+-- it verifies clean, then directly mutates a historical row (as postgres —
+-- simulating a DB-level attacker who bypasses the API entirely) and proves
+-- verify_activity_log_chain() flags exactly the tampered row.
+-- ---------------------------------------------------------------------
+insert into public.barangays (id, name) values
+  ('33333333-3333-3333-3333-333333333333', 'Barangay Chain Test')
+on conflict (id) do nothing;
+
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('d0000000-0000-0000-0000-000000000001', 'chain-admin@example.com',
+    '{"role":"admin","barangay_id":"33333333-3333-3333-3333-333333333333"}'),
+  ('d0000000-0000-0000-0000-000000000002', 'chain-staff@example.com',
+    '{"role":"staff","barangay_id":"33333333-3333-3333-3333-333333333333"}')
+on conflict (id) do nothing;
+
+insert into public.activity_logs (barangay_id, action, collection, record_id, details, user_name) values
+  ('33333333-3333-3333-3333-333333333333','create','residents','r1','Created resident: Juan Dela Cruz','Staff A'),
+  ('33333333-3333-3333-3333-333333333333','update','residents','r1','Updated resident: Juan Dela Cruz','Staff A'),
+  ('33333333-3333-3333-3333-333333333333','delete','residents','r1','Deleted resident','Staff A');
+
+do $$
+declare rec record; claims jsonb; all_valid boolean := true; n int := 0;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000001') into claims; -- chain admin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  for rec in select * from public.verify_activity_log_chain('33333333-3333-3333-3333-333333333333') loop
+    n := n + 1;
+    if not rec.valid then all_valid := false; end if;
+  end loop;
+  reset role;
+  perform app.verify_assert('activity_logs hash chain: row count before tampering', n::text, '3');
+  perform app.verify_assert('activity_logs hash chain: valid before tampering', all_valid::text, 'true');
+end $$;
+
+update public.activity_logs set details = 'TAMPERED'
+  where barangay_id = '33333333-3333-3333-3333-333333333333' and action = 'update';
+
+do $$
+declare rec record; claims jsonb; found_invalid boolean := false;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000001') into claims; -- chain admin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  for rec in select * from public.verify_activity_log_chain('33333333-3333-3333-3333-333333333333') loop
+    if not rec.valid then found_invalid := true; end if;
+  end loop;
+  reset role;
+  perform app.verify_assert('activity_logs hash chain: tampered row detected', found_invalid::text, 'true');
+end $$;
+
+do $$
+declare claims jsonb; threw boolean := false;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000002') into claims; -- chain staff (not admin)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    perform * from public.verify_activity_log_chain('33333333-3333-3333-3333-333333333333');
+  exception when others then
+    threw := true;
+  end;
+  reset role;
+  perform app.verify_assert('activity_logs hash chain: verify RPC denied to non-admin', threw::text, 'true');
+end $$;
+
+do $$ begin raise notice '=== ALL SECURITY PHASE 3 HASH-CHAIN ASSERTIONS PASSED ==='; end $$;

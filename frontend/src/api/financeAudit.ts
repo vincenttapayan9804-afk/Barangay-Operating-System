@@ -3,6 +3,7 @@ import { getSupabase } from '@/lib/supabaseClient'
 import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { getCurrentUser } from '@/auth/session'
 import { handleApiError } from './errorHandler'
+import { redactSensitiveText } from '@/lib/dlp'
 import type { BaseRecord } from './types'
 
 export interface ApiFinanceAudit extends BaseRecord {
@@ -52,6 +53,7 @@ export async function createFinanceAuditLog(
   details: string,
   amount = 0,
 ): Promise<void> {
+  const safeDetails = redactSensitiveText(details)
   try {
     if (isDemoModeEnabled()) {
       const user = getClient().authStore.model as Record<string, unknown> | null
@@ -60,7 +62,7 @@ export async function createFinanceAuditLog(
         action,
         collection_name: collectionName,
         record_id: recordId,
-        details,
+        details: safeDetails,
         amount,
         user_name: userName,
       })
@@ -73,7 +75,7 @@ export async function createFinanceAuditLog(
       action,
       collection_name: collectionName,
       record_id: recordId,
-      details,
+      details: safeDetails,
       amount,
       user_name: userName,
     })

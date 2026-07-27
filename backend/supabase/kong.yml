@@ -50,6 +50,17 @@ services:
   # requires an apikey — anon for the ordinary login/refresh/factor
   # endpoints, service_role for /admin/* (bootstrap-platform-admin.mjs and
   # the future invite-staff Edge Function).
+  #
+  # rate-limiting: every browser client sends the SAME anon apikey (the
+  # per-user identity lives in the JWT bearer token, which key-auth doesn't
+  # inspect), so `limit_by: consumer` would bucket every real user under one
+  # shared "anon" counter — one busy tenant would lock out every other
+  # barangay. `limit_by: ip` is the only correct choice here.
+  # `policy: local` avoids a Redis dependency this stack doesn't otherwise
+  # need; counts reset if Kong restarts, an acceptable tradeoff for a
+  # single-node deployment. Anti-brute-force on login/token/factor-verify,
+  # not a hard cap on legitimate traffic — one barangay office does not send
+  # hundreds of login attempts a minute.
   - name: auth-v1
     url: http://auth:9999/
     routes:
@@ -62,6 +73,14 @@ services:
       - name: key-auth
         config:
           hide_credentials: true
+      - name: rate-limiting
+        config:
+          minute: 20
+          hour: 300
+          limit_by: ip
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   - name: rest-v1
     url: http://rest:3000/
@@ -81,6 +100,46 @@ services:
           allow:
             - admin
             - anon
+
+  # Same PostgREST service as rest-v1 above, but only for write methods —
+  # Kong routes with `methods` set are more specific than the plain path
+  # route above and win the match, so GET/HEAD/OPTIONS traffic keeps
+  # rest-v1's plugin chain while POST/PUT/PATCH/DELETE additionally gets
+  # rate-limited here (anti-automation against bulk writes, matching the
+  # Security Phase 3 plan's "write-heavy routes" scope). Same service means
+  # this doesn't duplicate the cors/key-auth/acl plugins, only adds the one
+  # this route needs on top of them.
+  - name: rest-v1-write
+    url: http://rest:3000/
+    routes:
+      - name: rest-v1-write-route
+        strip_path: true
+        paths:
+          - /rest/v1/
+        methods:
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 2000
+          limit_by: ip
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   # Realtime's websocket upgrade + its own HTTP surface (tenant health
   # check, etc). frontend/src/hooks/useRealtimeCollection.ts connects here
@@ -126,3 +185,11 @@ services:
           allow:
             - admin
             - anon
+      - name: rate-limiting
+        config:
+          minute: 30
+          hour: 500
+          limit_by: ip
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
