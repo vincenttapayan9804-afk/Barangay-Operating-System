@@ -1,0 +1,105 @@
+﻿# Compliance & Standards Mapping
+
+CLUSTR is not formally certified against any framework below — this document maps the technical
+controls that exist (or are planned) in this repo to what each framework/standard actually asks
+for, so a barangay's Data Protection Officer or a would-be assessor can see the real state at a
+glance. Status is updated as each Security Roadmap phase lands; see the repo's task list for phase
+tracking.
+
+**Legend:** ✅ Implemented · 🔜 Planned (roadmap phase noted) · ⛔ Not applicable / out of scope
+for a project this size · 📋 Requires an external submission/audit — this repo can only prepare
+evidence, not self-certify.
+
+## OWASP ASVS (Application Security Verification Standard) — Levels 2 & 3
+
+| Control area | Status | Where |
+|---|---|---|
+| Browser security headers | 🔜 Phase 2 (CSP) — X-Frame-Options/HSTS/nosniff/Referrer-Policy/Permissions-Policy already ✅ | `frontend/nginx.conf` |
+| Allow-list input validation | 🔜 Phase 2 (zod on high-risk forms) | `frontend/src/features/*` |
+| Secure session token handling | 🔜 Phase 2 (PKCE, refresh rotation, shorter TTL) | `frontend/src/lib/supabaseClient.ts` |
+| Production code sanitization | 🔜 Phase 2 (strip sourcemaps/console in prod build) | `frontend/vite.config.ts` |
+| Database hardening & parameterized queries | 🔜 Phase 3 (verification pass — PostgREST already parameterizes by construction) | `backend/supabase` |
+| Fail-secure error handling | 🔜 Phase 3 (shared Edge Function error wrapper) | `backend/supabase/functions` |
+| Cryptographic log integrity | 🔜 Phase 3 (hash-chained `activity_logs`/`finance_audit_logs`) | `backend/supabase/migrations` |
+| Business logic & anti-automation | 🔜 Phase 3 (Kong rate-limiting) + Phase 6 (biometric step-up) | `backend/supabase/kong.yml` |
+| Secure file handling & uploads | 🔜 Phase 3 (signed uploads / Supabase Storage + bucket RLS) | `frontend/src/api/upload.ts` |
+| RBAC enforced server-side | ✅ Already done — RLS, not app code | `backend/supabase/migrations/000*` |
+| MFA | ✅ Already done — TOTP (GoTrue) + WebAuthn | `backend/webauthn-service` |
+
+## NIST Cybersecurity Framework (CSF) 2.0
+
+| Function | Status | Notes |
+|---|---|---|
+| **Govern** | 🔜 Phase 1 (this doc + threat model formalize policy) | `docs/THREAT_MODEL.md` |
+| **Identify** | ✅ Data classification (Phase 1), asset inventory in threat model | `docs/DATA_CLASSIFICATION.md` |
+| **Protect** | ✅ RLS/RBAC/MFA/backups today; 🔜 Phases 2–6 close the remaining gaps | multiple |
+| **Detect** | 🔜 Phase 3 (hash-chained audit logs make tampering detectable, not just logged) | — |
+| **Respond** | ✅ `docs/SECURITY.md` vulnerability-disclosure process | `docs/SECURITY.md` |
+| **Recover** | ✅ pgBackRest continuous backups | `docs/DEPLOYMENT.md` |
+
+## CIS Critical Security Controls v8 (Implementation Group 1 subset relevant here)
+
+| Control | Status |
+|---|---|
+| CIS 3 — Data Protection | 🔜 Phase 1 classification + Phase 3 DLP masking |
+| CIS 4 — Secure Configuration | ✅ Trivy config scan in CI; 🔜 Phase 5 removes plaintext secrets |
+| CIS 5 — Account Management | ✅ GoTrue admin-API-only provisioning, no open self-registration |
+| CIS 6 — Access Control Management | ✅ RLS-enforced RBAC |
+| CIS 8 — Audit Log Management | ✅ today, 🔜 Phase 3 cryptographic integrity |
+| CIS 13 — Network Monitoring & Defense | 🔜 Phase 4 (WAF second layer beyond Cloudflare) |
+
+## DICT Secure Software Development Lifecycle (SDLC)
+
+Philippine DICT's secure-SDLC guidance maps to process controls this repo already has via CI, plus
+documentation this phase adds:
+
+| Requirement | Status |
+|---|---|
+| Static analysis (SAST) in CI | ✅ Semgrep (OWASP Top Ten, secrets, TS/React rulesets) |
+| Dependency vulnerability scanning | ✅ `npm audit`, Trivy |
+| Secrets scanning | ✅ Trivy |
+| Software Bill of Materials (SBOM) | 🔜 Phase 1 (this phase — `cyclonedx-npm` in CI) |
+| Documented threat model | ✅ Phase 1 (`docs/THREAT_MODEL.md`) |
+| Formal secure-coding policy / branch protection | 📋 Administrative — set branch-protection rules and a `CODEOWNERS` file in GitHub settings; not a code change |
+
+## NIST Privacy Framework
+
+Overlaps heavily with the Philippine Data Privacy Act (RA 10173) work already done in
+`docs/PRIVACY_NOTICE.md` and `docs/DATA_PROCESSING_AGREEMENT.md`. Phase 1's data classification
+doc is the missing "Identify-P" piece; Phase 3's DLP masking is the "Protect-P" piece.
+
+## OWASP Open Source Security
+
+Covered by: `npm audit` + Trivy (known-vulnerability scanning) already in CI, plus Phase 1's new
+SBOM/license-scanning job (below) for supply-chain transparency.
+
+## OpenChain (ISO/IEC 5230 & ISO/IEC 18974)
+
+| Requirement | Status |
+|---|---|
+| Declared license (MIT) | ✅ Root `LICENSE` |
+| No copyleft (GPL/AGPL) dependencies | ✅ Verified — 0 matches across `frontend` and `backend/webauthn-service` |
+| SBOM generation | 🔜 Phase 1 (this phase) |
+| License-compliance CI gate | 🔜 Phase 1 (this phase — fails build on GPL/AGPL) |
+| Formal OpenChain conformance self-certification | 📋 An administrative self-declaration submitted to the OpenChain project once the above are in place — not a code change |
+
+## CSA STAR Level 1 / UK Cyber Essentials / Essential Eight (Australian ACSC)
+
+These are **self-assessment or third-party-audited certifications**, not software:
+
+- **CSA STAR Level 1** — a self-assessment questionnaire (CAIQ) submitted to the CSA STAR
+  Registry. This repo's technical controls (once Phases 2–6 land) supply the evidence; the
+  questionnaire submission itself is an administrative action for whoever operates the production
+  deployment, outside this codebase.
+- **UK Cyber Essentials** — requires a paid, externally-audited certification process. Out of
+  scope for a Philippine barangay system; noted here only because it was on the original request
+  list.
+- **Essential Eight** — an Australian government baseline (patching, MFA, application control,
+  restricting admin privileges, etc.). The *controls* it asks for are already substantially
+  covered by this repo's MFA/RBAC/patching practices; formal Essential Eight maturity-level
+  self-assessment is, again, an administrative exercise for the operating organization.
+
+## Explicitly not pursued
+
+- **Zero-Knowledge Proofs / Selective Disclosure** — see `docs/THREAT_MODEL.md`; no concrete use
+  case identified for this system today.

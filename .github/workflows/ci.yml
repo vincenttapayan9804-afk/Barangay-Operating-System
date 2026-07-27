@@ -138,6 +138,28 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
 
+  sbom-license:
+    name: SBOM & License Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request' || github.ref_name == 'main'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Generate SBOM (CycloneDX)
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom
+          path: frontend/sbom.json
+      - name: License compliance gate (no GPL/AGPL)
+        run: npx --yes license-checker --production --failOn "GPL;GPL-2.0;GPL-3.0;AGPL;AGPL-3.0;LGPL;LGPL-2.1;LGPL-3.0"
+
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
