@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { getClient } from '@/api/client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
+import { orIlike } from '@/api/supabaseFilters'
 import { getCurrentUser, type Role } from '@/auth/session'
 import { useTranslation, type TranslationKey } from '@/lib/i18n'
 
@@ -24,8 +27,8 @@ const COLLECTIONS: CollectionConfig[] = [
 ]
 
 // The subset of COLLECTIONS that's also indexed in Meilisearch (see
-// backend/pb_hooks/search.pb.js + frontend/src/api/searchSync.ts) —
-// everything else always goes through the direct PocketBase query path.
+// backend/supabase/functions/search-query + frontend/src/api/searchSync.ts)
+// — everything else always goes through the direct table query path.
 const MEILI_INDEXES = new Set(['residents', 'document_requests', 'blotter_records'])
 
 export interface SearchResultItem {
@@ -53,22 +56,38 @@ export interface UseGlobalSearchReturn {
 
 const DEBOUNCE_MS = 300
 
-function buildFilter(fields: string[], q: string): string {
-  const terms = q.trim().split(/\s+/).filter(Boolean)
-  return fields.map((f) => terms.map((t) => `${f} ~ "${t}"`).join(' && ')).join(' || ')
-}
-
-async function searchViaPocketBase(col: CollectionConfig, label: string, q: string): Promise<SearchResultGroup> {
+async function searchViaTable(col: CollectionConfig, label: string, q: string): Promise<SearchResultGroup> {
   try {
-    const filter = buildFilter(col.searchFields, q)
     const needed = [col.titleField, col.subtitleField].filter(Boolean)
-    const list = await getClient().collection(col.name).getList(1, 5, {
-      filter,
-      sort: '-updated',
-      fields: ['id', ...needed].join(','),
-    })
-    const items: SearchResultItem[] = list.items.map((record) => ({
-      id: record.id,
+    const columns = Array.from(new Set(['id', ...needed]))
+
+    if (isDemoModeEnabled()) {
+      const filter = buildDemoFilter(col.searchFields, q)
+      const list = await getClient().collection(col.name).getList(1, 5, {
+        filter,
+        sort: '-updated',
+        fields: columns.join(','),
+      })
+      const items: SearchResultItem[] = list.items.map((record) => ({
+        id: record.id,
+        collection: col.name,
+        collectionLabel: label,
+        title: String(record[col.titleField] ?? ''),
+        subtitle: String(record[col.subtitleField] ?? ''),
+        link: col.link,
+      }))
+      return { label, link: col.link, items }
+    }
+
+    const { data, error } = await getSupabase()
+      .from(col.name)
+      .select(columns.join(','))
+      .or(orIlike(col.searchFields, q))
+      .order('updated', { ascending: false })
+      .limit(5)
+    if (error) throw error
+    const items: SearchResultItem[] = (data as unknown as Record<string, unknown>[]).map((record) => ({
+      id: record.id as string,
       collection: col.name,
       collectionLabel: label,
       title: String(record[col.titleField] ?? ''),
@@ -79,6 +98,11 @@ async function searchViaPocketBase(col: CollectionConfig, label: string, q: stri
   } catch {
     return { label, link: col.link, items: [] }
   }
+}
+
+function buildDemoFilter(fields: string[], q: string): string {
+  const terms = q.trim().split(/\s+/).filter(Boolean)
+  return fields.map((f) => terms.map((t) => `${f} ~ "${t.replace(/"/g, '\\"')}"`).join(' && ')).join(' || ')
 }
 
 interface MeiliHit {
@@ -110,32 +134,30 @@ function hitToItem(indexName: string, hit: MeiliHit, label: string, link: string
 
 /**
  * Tries the Meilisearch-backed proxy first (fuzzy, typo-tolerant, see
- * backend/pb_hooks/search.pb.js) for the indexed collections. Returns null
- * (not an empty result) when the proxy reports it isn't configured for
- * this deployment, so the caller can fall back to the direct PocketBase
- * query path instead of showing "no results" for a feature that's simply
- * not set up.
+ * backend/supabase/functions/search-query) for the indexed collections.
+ * Returns null (not an empty result) when the proxy reports it isn't
+ * configured for this deployment, so the caller can fall back to the direct
+ * table query path instead of showing "no results" for a feature that's
+ * simply not set up. Always null in demo mode — no Edge Functions there.
  */
 async function searchViaMeilisearch(
   q: string,
   accessible: CollectionConfig[],
   labelByCollection: Map<string, string>,
 ): Promise<SearchResultGroup[] | null> {
+  if (isDemoModeEnabled()) return null
+
   const indexes = accessible.filter((c) => MEILI_INDEXES.has(c.name)).map((c) => c.name)
   if (indexes.length === 0) return []
 
   try {
-    const client = getClient()
-    const res = await fetch(`${client.baseURL}/api/search/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: client.authStore.token },
-      body: JSON.stringify({ query: q, indexes }),
+    const { data, error } = await getSupabase().functions.invoke<MeiliQueryResponse>('search-query', {
+      body: { query: q, indexes },
     })
-    if (!res.ok) return null
-    const data: MeiliQueryResponse = await res.json()
-    if (data.configured === false) return null
+    if (error) return null
+    if (data?.configured === false) return null
 
-    return (data.results || []).map((r) => {
+    return (data?.results || []).map((r) => {
       const col = accessible.find((c) => c.name === r.indexUid)
       const label = labelByCollection.get(r.indexUid) || r.indexUid
       const link = col?.link || '/'
@@ -180,15 +202,15 @@ export function useGlobalSearch(): UseGlobalSearchReturn {
       const meiliResults = await searchViaMeilisearch(q, accessible, labelByCollection)
       const nonMeiliCollections = accessible.filter((c) => !MEILI_INDEXES.has(c.name))
       // meiliResults === null means the proxy isn't configured/reachable —
-      // fall back to the direct PocketBase path for every collection, not
+      // fall back to the direct table query path for every collection, not
       // just the ones Meilisearch would have covered.
-      const pbCollections = meiliResults === null ? accessible : nonMeiliCollections
+      const tableCollections = meiliResults === null ? accessible : nonMeiliCollections
 
-      const [pbGroups] = await Promise.all([
-        Promise.all(pbCollections.map((col) => searchViaPocketBase(col, labelByCollection.get(col.name)!, q))),
+      const [tableGroups] = await Promise.all([
+        Promise.all(tableCollections.map((col) => searchViaTable(col, labelByCollection.get(col.name)!, q))),
       ])
 
-      const groupResults = [...(meiliResults ?? []), ...pbGroups]
+      const groupResults = [...(meiliResults ?? []), ...tableGroups]
       setResults(groupResults.filter((g) => g.items.length > 0))
       setSearching(false)
       setHasSearched(true)

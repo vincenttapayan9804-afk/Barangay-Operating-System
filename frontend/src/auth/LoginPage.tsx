@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2, KeyRound } from 'lucide-react'
-import { login, requestLoginOtp, completeMfaLogin } from './session'
+import { login, requestNewMfaChallenge, completeMfaLogin } from './session'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { getClient } from '@/api/client'
 import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, isDemoModeEnabled, type DemoAccount } from '@/lib/demoAccounts'
@@ -27,11 +27,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [greetingKey] = useState(getGreetingKey)
 
-  // Second-factor step — only entered for admin accounts (see
-  // 1785000029_admin_mfa.js). mfaId identifies the in-progress login;
-  // otpId identifies the emailed one-time code the user is entering.
-  const [mfaId, setMfaId] = useState('')
-  const [otpId, setOtpId] = useState('')
+  // Second-factor step — required whenever the signed-in account has TOTP
+  // MFA enrolled (always true for role=admin; see app.mfa_satisfied() in
+  // backend/supabase/migrations/0000_auth_helpers.sql). factorId/challengeId
+  // identify which enrolled authenticator and which live challenge the
+  // 6-digit code below is being verified against.
+  const [factorId, setFactorId] = useState('')
+  const [challengeId, setChallengeId] = useState('')
   const [otpCode, setOtpCode] = useState('')
 
   // Temporary demo-mode access — runs entirely in this browser, no backend
@@ -108,9 +110,8 @@ export default function LoginPage() {
     try {
       const result = await login(email, password)
       if (result.mfaRequired) {
-        const otp = await requestLoginOtp(email)
-        setMfaId(result.mfaId)
-        setOtpId(otp.otpId)
+        setFactorId(result.factorId)
+        setChallengeId(result.challengeId)
       } else {
         navigate('/dashboard')
       }
@@ -127,7 +128,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await completeMfaLogin(otpId, otpCode, mfaId)
+      await completeMfaLogin(factorId, challengeId, otpCode)
       navigate('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid or expired code')
@@ -136,13 +137,13 @@ export default function LoginPage() {
     }
   }
 
-  async function handleResendCode() {
+  async function handleNewCode() {
     setError('')
     try {
-      const otp = await requestLoginOtp(email)
-      setOtpId(otp.otpId)
+      const newChallengeId = await requestNewMfaChallenge(factorId)
+      setChallengeId(newChallengeId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend code')
+      setError(err instanceof Error ? err.message : 'Failed to get a new code challenge')
     }
   }
 
@@ -216,11 +217,11 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="mt-10">
-            {mfaId ? (
+            {factorId ? (
               <form onSubmit={handleMfaSubmit} className="mt-6 space-y-4">
                 <div className="flex items-start gap-2 rounded-xl border border-barangay/20 bg-barangay/5 px-4 py-3 font-display text-sm text-barangay">
                   <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-                  <span>We emailed a verification code to {email}. Enter it below to finish signing in.</span>
+                  <span>Enter the 6-digit code from your authenticator app to finish signing in.</span>
                 </div>
 
                 <input
@@ -260,10 +261,10 @@ export default function LoginPage() {
 
                 <button
                   type="button"
-                  onClick={handleResendCode}
+                  onClick={handleNewCode}
                   className="w-full font-display text-xs font-medium text-gray-500 underline transition-colors hover:text-gray-600"
                 >
-                  Resend code
+                  My code expired — get a new one
                 </button>
               </form>
             ) : (
@@ -360,7 +361,7 @@ export default function LoginPage() {
           </div>
 
           {/* Temporary demo access — no backend required */}
-          {!mfaId && (
+          {!factorId && (
             <div className="mt-8">
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200" />
@@ -382,6 +383,7 @@ export default function LoginPage() {
                   <button
                     key={account.role}
                     type="button"
+                    data-testid={`demo-login-${account.role}`}
                     onClick={() => handleDemoLogin(account)}
                     disabled={demoLoading !== null}
                     className="flex w-full items-center gap-3 rounded-xl border border-mint-deep/20 bg-mint-soft/40 px-4 py-3 text-left transition-colors hover:bg-mint-soft disabled:cursor-not-allowed disabled:opacity-60"

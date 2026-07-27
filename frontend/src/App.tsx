@@ -5,16 +5,18 @@ import { ThemeProvider } from '@/lib/theme'
 import { LanguageProvider } from '@/lib/i18n'
 import { resolveApiUrl, isFallbackMode } from '@/lib/apiConfig'
 import AppRoutes from '@/routes'
-import { getClient } from '@/api/client'
+import { initAuthSession } from '@/auth/session'
 
 export default function App() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    resolveApiUrl().then(() => {
-      // Re-initialize client with the resolved URL
-      // (already handled by getClient() reading getApiUrl())
-      getClient()
+    resolveApiUrl().then(async () => {
+      // Hydrates auth/session.ts's session cache once, synchronously
+      // available (getCurrentUser()/isAuthenticated()) for the rest of the
+      // app's lifetime from here on — mirrors PocketBase's authStore, which
+      // loaded its persisted session synchronously in its constructor.
+      await initAuthSession()
       setReady(true)
     })
   }, [])

@@ -157,7 +157,7 @@ export function RevenueTracking() {
               {flyout.expand?.document_request && (
                 <>
                   <FieldRow label="Document Request" value={`#${flyout.document_request}`} />
-                  <FieldRow label="Received By" value={(flyout.expand.document_request as Record<string, unknown>)?.received_by as string || '—'} />
+                  <FieldRow label="Received By" value={flyout.expand.document_request?.received_by || '—'} />
                 </>
               )}
             </DetailSection>

@@ -11,7 +11,7 @@ try {
   Expand-Archive -Path $ArtifactZip -DestinationPath $TempDir -Force
 
   Write-Host "Building Docker images..."
-  Set-Location -Path (Join-Path $PSScriptRoot '..\backend')
+  Set-Location -Path (Join-Path $PSScriptRoot '..\backend\supabase')
   docker compose build
 
   Write-Host "Restarting services..."
@@ -19,12 +19,12 @@ try {
   docker compose up -d
 
   Start-Sleep -Seconds 5
-  $response = Invoke-RestMethod -Uri "http://localhost:8090/api/health" -ErrorAction Stop
-  if ($response.code -eq 200) {
-    Write-Host "Deploy successful. PocketBase is healthy."
-    Write-Host "Frontend: http://localhost:8080"
-    Write-Host "Admin:    http://localhost:8090/_/"
-  }
+  # Hits GoTrue's own published port directly (127.0.0.1:9999 in
+  # docker-compose.yml), not through Kong — every route behind Kong
+  # requires an apikey header, which a plain health probe doesn't send.
+  Invoke-RestMethod -Uri "http://localhost:9999/health" -ErrorAction Stop | Out-Null
+  Write-Host "Deploy successful. Auth (GoTrue) is healthy."
+  Write-Host "Frontend: http://localhost:8080"
 }
 finally {
   if (Test-Path $TempDir) { Remove-Item -Path $TempDir -Recurse -Force }

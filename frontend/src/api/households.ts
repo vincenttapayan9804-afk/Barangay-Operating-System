@@ -1,7 +1,10 @@
-import type { RecordModel } from 'pocketbase'
 import { getClient } from './client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { handleApiError } from './errorHandler'
 import { createActivity } from './activity'
+import { orIlike } from './supabaseFilters'
+import type { BaseRecord } from './types'
 import type { PaginatedResult } from '@/lib/utils'
 
 const COLLECTION = 'households'
@@ -33,7 +36,7 @@ export interface HouseholdData {
   toilet_type?: string
 }
 
-export interface ApiHousehold extends RecordModel {
+export interface ApiHousehold extends BaseRecord {
   household_number: string
   region: string
   province: string
@@ -58,15 +61,18 @@ export interface ApiHousehold extends RecordModel {
   waste_disposal: string
   power_supply: string
   toilet_type: string
-  updated: string
 }
 
 export async function getNextHouseholdNumber(): Promise<string> {
   try {
-    const all = await getClient().collection(COLLECTION).getFullList<ApiHousehold>({
-      sort: '-created',
-      requestKey: 'next-hh',
-    })
+    let all: ApiHousehold[]
+    if (isDemoModeEnabled()) {
+      all = await getClient().collection(COLLECTION).getFullList<ApiHousehold>({ sort: '-created', requestKey: 'next-hh' })
+    } else {
+      const { data, error } = await getSupabase().from(COLLECTION).select('*').order('created', { ascending: false })
+      if (error) throw error
+      all = data as ApiHousehold[]
+    }
     let max = 0
     const year = new Date().getFullYear().toString()
     for (const h of all) {
@@ -85,16 +91,29 @@ export async function getHouseholdsPage(
   options: { search?: string; sitio_purok?: string } = {},
 ): Promise<PaginatedResult<ApiHousehold>> {
   try {
-    const filters: string[] = []
-    if (options.search) {
-      const q = options.search.replace(/"/g, '\\"')
-      filters.push(`(household_number ~ "${q}" || household_name ~ "${q}" || household_complete_address ~ "${q}" || sitio_purok ~ "${q}")`)
+    if (isDemoModeEnabled()) {
+      const filters: string[] = []
+      if (options.search) {
+        const q = options.search.replace(/"/g, '\\"')
+        filters.push(`(household_number ~ "${q}" || household_name ~ "${q}" || household_complete_address ~ "${q}" || sitio_purok ~ "${q}")`)
+      }
+      if (options.sitio_purok) filters.push(`sitio_purok = "${options.sitio_purok}"`)
+      const query: Record<string, unknown> = { sort: 'household_number' }
+      if (filters.length > 0) query.filter = filters.join(' && ')
+      const result = await getClient().collection(COLLECTION).getList<ApiHousehold>(page, perPage, query)
+      return { items: result.items, totalItems: result.totalItems, totalPages: result.totalPages }
     }
-    if (options.sitio_purok) filters.push(`sitio_purok = "${options.sitio_purok}"`)
-    const query: Record<string, unknown> = { sort: 'household_number' }
-    if (filters.length > 0) query.filter = filters.join(' && ')
-    const result = await getClient().collection(COLLECTION).getList<ApiHousehold>(page, perPage, query)
-    return { items: result.items, totalItems: result.totalItems, totalPages: result.totalPages }
+
+    let q = getSupabase().from(COLLECTION).select('*', { count: 'exact' })
+    if (options.search) {
+      q = q.or(orIlike(['household_number', 'household_name', 'household_complete_address', 'sitio_purok'], options.search))
+    }
+    if (options.sitio_purok) q = q.eq('sitio_purok', options.sitio_purok)
+    const from = (page - 1) * perPage
+    const { data, error, count } = await q.order('household_number').range(from, from + perPage - 1)
+    if (error) throw error
+    const totalItems = count ?? 0
+    return { items: data as ApiHousehold[], totalItems, totalPages: Math.max(1, Math.ceil(totalItems / perPage)) }
   } catch (err) {
     throw handleApiError(err)
   }
@@ -102,7 +121,12 @@ export async function getHouseholdsPage(
 
 export async function getHouseholds(): Promise<ApiHousehold[]> {
   try {
-    return await getClient().collection(COLLECTION).getFullList<ApiHousehold>({ sort: 'household_number' })
+    if (isDemoModeEnabled()) {
+      return await getClient().collection(COLLECTION).getFullList<ApiHousehold>({ sort: 'household_number' })
+    }
+    const { data, error } = await getSupabase().from(COLLECTION).select('*').order('household_number')
+    if (error) throw error
+    return data as ApiHousehold[]
   } catch (err) {
     throw handleApiError(err)
   }
@@ -110,11 +134,22 @@ export async function getHouseholds(): Promise<ApiHousehold[]> {
 
 export async function searchHouseholds(query: string): Promise<ApiHousehold[]> {
   try {
-    const result = await getClient().collection(COLLECTION).getList<ApiHousehold>(1, 20, {
-      filter: `(household_number ~ "${query}" || household_name ~ "${query}" || household_complete_address ~ "${query}")`,
-      sort: 'household_name',
-    })
-    return result.items
+    if (isDemoModeEnabled()) {
+      const result = await getClient().collection(COLLECTION).getList<ApiHousehold>(1, 20, {
+        filter: getClient().filter('(household_number ~ {:q} || household_name ~ {:q} || household_complete_address ~ {:q})', { q: query }),
+        sort: 'household_name',
+      })
+      return result.items
+    }
+
+    const { data, error } = await getSupabase()
+      .from(COLLECTION)
+      .select('*')
+      .or(orIlike(['household_number', 'household_name', 'household_complete_address'], query))
+      .order('household_name')
+      .limit(20)
+    if (error) throw error
+    return data as ApiHousehold[]
   } catch (err) {
     throw handleApiError(err)
   }
@@ -122,7 +157,12 @@ export async function searchHouseholds(query: string): Promise<ApiHousehold[]> {
 
 export async function getHousehold(id: string): Promise<ApiHousehold> {
   try {
-    return await getClient().collection(COLLECTION).getOne<ApiHousehold>(id)
+    if (isDemoModeEnabled()) {
+      return await getClient().collection(COLLECTION).getOne<ApiHousehold>(id)
+    }
+    const { data, error } = await getSupabase().from(COLLECTION).select('*').eq('id', id).single()
+    if (error) throw error
+    return data as ApiHousehold
   } catch (err) {
     throw handleApiError(err)
   }
@@ -130,7 +170,15 @@ export async function getHousehold(id: string): Promise<ApiHousehold> {
 
 export async function createHousehold(data: HouseholdData): Promise<ApiHousehold> {
   try {
-    const result = await getClient().collection(COLLECTION).create<ApiHousehold>({ ...sanitize(data), data_set: 'BIPS' })
+    const payload = { ...sanitize(data), data_set: 'BIPS' }
+    let result: ApiHousehold
+    if (isDemoModeEnabled()) {
+      result = await getClient().collection(COLLECTION).create<ApiHousehold>(payload)
+    } else {
+      const { data: row, error } = await getSupabase().from(COLLECTION).insert(payload).select().single()
+      if (error) throw error
+      result = row as ApiHousehold
+    }
     createActivity('create', COLLECTION, result.id, `Created household: ${result.household_number} — ${result.household_name}`)
     return result
   } catch (err) {
@@ -140,7 +188,15 @@ export async function createHousehold(data: HouseholdData): Promise<ApiHousehold
 
 export async function updateHousehold(id: string, data: Partial<HouseholdData>): Promise<ApiHousehold> {
   try {
-    const result = await getClient().collection(COLLECTION).update<ApiHousehold>(id, { ...sanitize(data), data_set: 'BIPS' })
+    const payload = { ...sanitize(data), data_set: 'BIPS' }
+    let result: ApiHousehold
+    if (isDemoModeEnabled()) {
+      result = await getClient().collection(COLLECTION).update<ApiHousehold>(id, payload)
+    } else {
+      const { data: row, error } = await getSupabase().from(COLLECTION).update(payload).eq('id', id).select().single()
+      if (error) throw error
+      result = row as ApiHousehold
+    }
     createActivity('update', COLLECTION, id, `Updated household: ${result.household_number} — ${result.household_name}`)
     return result
   } catch (err) {
@@ -162,7 +218,12 @@ function sanitize(data: Partial<HouseholdData>): Partial<HouseholdData> {
 
 export async function deleteHousehold(id: string): Promise<boolean> {
   try {
-    await getClient().collection(COLLECTION).delete(id)
+    if (isDemoModeEnabled()) {
+      await getClient().collection(COLLECTION).delete(id)
+    } else {
+      const { error } = await getSupabase().from(COLLECTION).delete().eq('id', id)
+      if (error) throw error
+    }
     createActivity('delete', COLLECTION, id, 'Deleted household')
     return true
   } catch (err) {

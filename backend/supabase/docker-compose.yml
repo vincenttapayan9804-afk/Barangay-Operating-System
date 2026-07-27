@@ -1,0 +1,429 @@
+# Phase 6 (infra/ops rebuild) — the full self-hosted stack this migration's
+# plan calls for: db, auth, rest, realtime, kong, edge-runtime (Edge
+# Functions), meilisearch (unchanged from the PocketBase-era compose file),
+# webauthn (unchanged since Phase 3 — it already targets kong, not a direct
+# backend connection), a Supavisor connection pooler, and continuous
+# Postgres backups (pgBackRest, replacing backend/litestream.yml). Storage
+# is deliberately NOT stood up here — zero PocketBase file-field usage
+# exists in this codebase (confirmed by exhaustive grep during planning),
+# so it's deferred until an actual file-upload feature needs it.
+#
+# Supersedes Phase 2's auth-only compose file (db+auth+rest+kong) — that
+# file's own comment described itself as "not the full Phase 6 production
+# compose," and this is that compose.
+#
+# Every service below has a healthcheck — a real gap in the old PocketBase
+# compose file (backend/docker-compose.yml), which had none.
+#
+# Run on any machine with a working Docker daemon (this sandbox has none —
+# see PHASE6_NOTES.md):
+#   cd backend/supabase
+#   cp .env.example .env
+#   node ../scripts/generate-supabase-keys.mjs   # fills in ANON_KEY/SERVICE_ROLE_KEY
+#   docker compose up -d
+#   node ../scripts/bootstrap-platform-admin.mjs
+
+name: barangay-supabase
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: db.Dockerfile
+    container_name: barangay-supabase-db
+    restart: unless-stopped
+    # archive_mode/archive_command push every completed WAL segment to S3
+    # via pgBackRest continuously (same "seconds of data at risk, not a
+    # snapshot interval" guarantee backend/litestream.yml gave SQLite) —
+    # passed as postgres server args rather than baked into the image so
+    # it survives db.Dockerfile changes untouched. wal_level is left at the
+    # image's own default (logical) — overriding it to anything lower would
+    # silently break the realtime service's postgres_changes subscriptions.
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=${PGBACKREST_STANZA:-barangay} archive-push %p
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      PGBACKREST_STANZA: ${PGBACKREST_STANZA:-barangay}
+      PGBACKREST_REPO1_TYPE: s3
+      PGBACKREST_REPO1_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      PGBACKREST_REPO1_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      PGBACKREST_REPO1_S3_REGION: ${BACKUP_S3_REGION:-auto}
+      PGBACKREST_REPO1_S3_KEY: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      PGBACKREST_REPO1_PATH: /barangay
+    ports:
+      - "127.0.0.1:54322:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
+      # supabase/postgres only auto-runs *.sql directly inside
+      # docker-entrypoint-initdb.d, not subdirectories — this tiny wrapper
+      # applies migrations/*.sql in filename order on first boot.
+      - ./init-migrations.sh:/docker-entrypoint-initdb.d/00-init-migrations.sh:ro
+      - ./backup/pgbackrest.conf:/etc/pgbackrest.conf:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    container_name: barangay-supabase-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:5173}
+      GOTRUE_URI_ALLOW_LIST: ${URI_ALLOW_LIST:-}
+      # No open self-registration — matches PocketBase today. New accounts
+      # are provisioned only via the admin API (bootstrap-platform-admin.mjs,
+      # and the create-barangay-admin Edge Function for in-app onboarding).
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
+      GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/public/custom_access_token_hook
+      # TOTP authenticator-app MFA (Hard Part #2's decision). GoTrue issues
+      # an aal1 session on ordinary password login regardless of role;
+      # 0000_auth_helpers.sql's app.mfa_satisfied() is what actually blocks
+      # data access at the RLS layer until the session is upgraded to aal2
+      # via POST /auth/v1/factors -> /challenge -> /verify.
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_MFA_TOTP_ISSUER: ${WEBAUTHN_RP_NAME:-CLUSTR Barangay OS}
+      # Mailer: admin-created users are pre-confirmed via the admin API's
+      # email_confirm:true, so no SMTP dependency for account creation
+      # itself. Real SMTP is only needed for password-recovery emails.
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-}
+    ports:
+      - "127.0.0.1:9999:9999"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rest:
+    image: postgrest/postgrest:v12.2.8
+    container_name: barangay-supabase-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Unchanged from Phase 2 — direct connection to `db`, not routed
+      # through Supavisor. PostgREST already pools its own connections
+      # internally (a small fixed-size libpq pool, not one-per-request), so
+      # it isn't the workload Supavisor exists to protect against; see the
+      # `supavisor` service below for what it does front.
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Powers the `postgres_changes` channels frontend/src/hooks/useRealtimeCollection.ts
+  # subscribes to (document_requests, blotter_records, visitor_logs — see
+  # migrations/0028_realtime_publication.sql). SEED_SELF_HOST registers a
+  # single default tenant matching this stack's own JWT_SECRET/DB, the
+  # standard single-tenant self-host mode (skips Realtime's own
+  # multi-tenant onboarding API, which this deployment has no use for —
+  # there is exactly one Postgres database here, not a fleet of them).
+  realtime:
+    image: supabase/realtime:v2.34.7
+    container_name: barangay-supabase-realtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: ${REALTIME_DB_ENC_KEY:-supabaserealtime}
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      RUN_JANITOR: "true"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sSfL",
+          "--head",
+          "-o",
+          "/dev/null",
+          "-H",
+          "Authorization: Bearer ${ANON_KEY}",
+          "http://localhost:4000/api/tenants/realtime-dev/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Edge Functions (backend/supabase/functions/*) — Phase 4's direct ports
+  # of pb_hooks/*.pb.js plus Phase 5's create-barangay-admin. functions/main
+  # is the dispatcher every /functions/v1/<name> request goes through; see
+  # its own header comment for why self-hosted edge-runtime needs one.
+  edge-runtime:
+    image: supabase/edge-runtime:v1.58.2
+    container_name: barangay-supabase-edge-runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      FUNCTIONS_VERIFY_JWT: "true"
+      # notify-* / search-* function secrets — see functions/.env.example.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-CLUSTR}
+      MEILI_URL: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+    volumes:
+      - ./functions:/home/deno/functions:ro
+    command: ["start", "--main-service", "/home/deno/functions/main"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9000/_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kong:
+    image: kong:2.8
+    container_name: barangay-supabase-kong
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+      - realtime
+      - edge-runtime
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    volumes:
+      - ./kong.yml:/kong.yml:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Full-text search for residents/documents/blotter, reached only by the
+  # search-index/search-query Edge Functions over the Docker network — the
+  # frontend never talks to this directly and never sees MEILI_MASTER_KEY.
+  # Unchanged from the PocketBase-era backend/docker-compose.yml. No-op /
+  # search silently falls back to the existing per-table query path until
+  # MEILI_MASTER_KEY is set — see docs/DEPLOYMENT.md.
+  meilisearch:
+    image: getmeili/meilisearch:v1.10
+    container_name: barangay-meilisearch
+    restart: unless-stopped
+    volumes:
+      - meili_data:/meili_data
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-}
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_ENV=${MEILI_ENV:-development}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Passkey/WebAuthn sidecar (Phase 3). Already targets Kong, not a direct
+  # backend connection, unchanged since Phase 3.
+  webauthn:
+    build: ../webauthn-service
+    container_name: barangay-webauthn
+    restart: unless-stopped
+    depends_on:
+      kong:
+        condition: service_healthy
+    environment:
+      - SUPABASE_URL=http://kong:8000
+      - SUPABASE_ANON_KEY=${ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
+      - RP_ID=${WEBAUTHN_RP_ID:-localhost}
+      - RP_NAME=${WEBAUTHN_RP_NAME:-CLUSTR Barangay OS}
+      - WEBAUTHN_ORIGINS=${WEBAUTHN_ORIGINS:-http://localhost:8080}
+    ports:
+      - "127.0.0.1:8091:8091"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Connection pooler, recommended from day one per the migration plan —
+  # Postgres's per-connection memory cost (unlike SQLite, which had none)
+  # makes unpooled, one-per-request-style connections risky once onboarding
+  # passes a few hundred tenants sharing this one database. `rest`, `auth`,
+  # and `edge-runtime` above already hold a small, fixed number of long-lived
+  # connections each (not one per request) and keep connecting directly to
+  # `db:5432`, unchanged from Phase 2 — pooling doesn't help a workload
+  # that was never the unpooled-connection-count problem to begin with.
+  # This service is the pooled entry point (port 6543, transaction mode)
+  # meant for anything that *does* open one connection per unit of work —
+  # ad hoc psql/BI-tool access, a future direct-SQL admin task, or a
+  # from-day-one on-ramp so switching PostgREST/Edge Functions onto it
+  # later is a config change, not a re-architecture.
+  #
+  # Supavisor's exact self-hosted tenant-registration bootstrap could not be
+  # exercised against a live host in this sandbox — see PHASE6_NOTES.md.
+  supavisor:
+    image: supabase/supavisor:2.4.12
+    container_name: barangay-supabase-pooler
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:6543:6543"
+    environment:
+      PORT: 4000
+      DATABASE_URL: ecto://supabase_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      CLUSTER_POSTGRES: "true"
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      VAULT_ENC_KEY: ${VAULT_ENC_KEY}
+      API_JWT_SECRET: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      REGION: local
+      ERL_AFLAGS: -proto_dist inet_tcp
+      POOLER_TENANT_ID: ${POOLER_TENANT_ID:-barangay}
+      POOLER_DEFAULT_POOL_SIZE: ${POOLER_DEFAULT_POOL_SIZE:-20}
+      POOLER_MAX_CLIENT_CONN: ${POOLER_MAX_CLIENT_CONN:-200}
+      POOLER_POOL_MODE: transaction
+    healthcheck:
+      test: ["CMD", "curl", "-sSfL", "--head", "-o", "/dev/null", "http://localhost:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Continuous Postgres backup (Phase 6, replaces backend/litestream.yml).
+  # `db`'s own archive_command (above) ships WAL segments to S3 the instant
+  # each one fills; this service only handles the periodic full/incremental
+  # base backups every PITR setup also needs — see backup/backup-cron.sh.
+  # No-op / fails stanza-create until the BACKUP_S3_* vars below are set,
+  # same "safe to leave unset until backups are configured" pattern
+  # litestream.yml's LITESTREAM_* vars used.
+  backup:
+    build:
+      context: .
+      dockerfile: db.Dockerfile
+    container_name: barangay-supabase-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - db_data:/var/lib/postgresql/data:ro
+      - ./backup/pgbackrest.conf:/etc/pgbackrest.conf:ro
+      - ./backup/backup-cron.sh:/backup-cron.sh:ro
+    environment:
+      PGBACKREST_STANZA: ${PGBACKREST_STANZA:-barangay}
+      PGBACKREST_REPO1_TYPE: s3
+      PGBACKREST_REPO1_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      PGBACKREST_REPO1_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      PGBACKREST_REPO1_S3_REGION: ${BACKUP_S3_REGION:-auto}
+      PGBACKREST_REPO1_S3_KEY: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      PGBACKREST_REPO1_PATH: /barangay
+      PGBACKREST_PG1_HOST: db
+      PGBACKREST_PG1_PORT: 5432
+      PGBACKREST_PG1_USER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/bash", "/backup-cron.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f backup-cron.sh || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # SPA host + reverse proxy (unchanged container/image from the
+  # PocketBase-era backend/docker-compose.yml, `frontend/Dockerfile` +
+  # `frontend/nginx.conf`) — nginx.conf's own routes were updated to proxy
+  # /rest/v1, /auth/v1, /realtime/v1, /functions/v1 to `kong:8000` instead
+  # of PocketBase's /api/ and /_/ routes. VITE_API_URL should be this
+  # deployment's own public origin (the frontend talks to Kong through this
+  # same nginx, not directly), matching the existing smart-URL-resolution
+  # design (docs/ARCHITECTURE.md "Smart URL Resolution") unchanged.
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        VITE_LOCAL_API_URL: ${VITE_LOCAL_API_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${ANON_KEY:-}
+        VITE_CLOUDINARY_CLOUD_NAME: ${VITE_CLOUDINARY_CLOUD_NAME:-}
+        VITE_CLOUDINARY_UPLOAD_PRESET: ${VITE_CLOUDINARY_UPLOAD_PRESET:-}
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+    container_name: barangay-frontend
+    restart: unless-stopped
+    depends_on:
+      kong:
+        condition: service_healthy
+      webauthn:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes: [ "../certs:/etc/nginx/certs" ]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+  meili_data:

@@ -1,4 +1,6 @@
 import { getClient } from '@/api/client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { peekAll, dequeue } from './queue'
 import { verifyAuth } from '@/auth/session'
 
@@ -42,20 +44,40 @@ export async function flushQueue(): Promise<void> {
   remainingCount = items.length
   notify()
 
-  const pb = getClient()
-
   for (const item of items) {
     try {
-      switch (item.method) {
-        case 'create':
-          await pb.collection(item.collection).create(item.payload)
-          break
-        case 'update':
-          await pb.collection(item.collection).update(item.recordId!, item.payload)
-          break
-        case 'delete':
-          await pb.collection(item.collection).delete(item.recordId!)
-          break
+      if (isDemoModeEnabled()) {
+        const pb = getClient()
+        switch (item.method) {
+          case 'create':
+            await pb.collection(item.collection).create(item.payload)
+            break
+          case 'update':
+            await pb.collection(item.collection).update(item.recordId!, item.payload)
+            break
+          case 'delete':
+            await pb.collection(item.collection).delete(item.recordId!)
+            break
+        }
+      } else {
+        const supabase = getSupabase()
+        switch (item.method) {
+          case 'create': {
+            const { error } = await supabase.from(item.collection).insert(item.payload)
+            if (error) throw error
+            break
+          }
+          case 'update': {
+            const { error } = await supabase.from(item.collection).update(item.payload).eq('id', item.recordId!)
+            if (error) throw error
+            break
+          }
+          case 'delete': {
+            const { error } = await supabase.from(item.collection).delete().eq('id', item.recordId!)
+            if (error) throw error
+            break
+          }
+        }
       }
       await dequeue(item.id!)
       remainingCount--

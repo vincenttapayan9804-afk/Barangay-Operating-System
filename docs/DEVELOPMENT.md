@@ -4,9 +4,8 @@
 
 - **Node.js** 20+ (required for Vite 8)
 - **npm** 10+
-- **PocketBase** binary — download from [pocketbase.io/docs](https://pocketbase.io/docs/)
 - **Git**
-- **Docker Desktop** (optional, for production simulation)
+- **Docker Desktop** — only needed if you want the real backend running locally; demo mode (see below) needs nothing but Node
 
 ## Initial Setup
 
@@ -27,7 +26,8 @@ cp .env.local.example frontend/.env.local
 Create `frontend/.env.local` with the following:
 
 ```env
-VITE_API_URL=http://localhost:8090
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_ANON_KEY=
 VITE_LOCAL_API_URL=
 VITE_CLOUDINARY_CLOUD_NAME=
 VITE_CLOUDINARY_UPLOAD_PRESET=
@@ -35,69 +35,76 @@ VITE_CLOUDINARY_UPLOAD_PRESET=
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VITE_API_URL` | **Yes** | — | Primary API URL (PocketBase). In dev: `http://localhost:8090`. In production: the Cloudflare Tunnel URL. |
+| `VITE_API_URL` | **Yes** (real backend only) | — | Kong gateway URL. In dev: `http://localhost:8000`. In production: the Cloudflare Tunnel URL. |
+| `VITE_SUPABASE_ANON_KEY` | **Yes** (real backend only) | — | The `ANON_KEY` printed by `node backend/scripts/generate-supabase-keys.mjs`. |
 | `VITE_LOCAL_API_URL` | No | — | LAN IP for local network access in production (e.g., `http://192.168.1.100:8080`). Leave empty in dev. |
 | `VITE_CLOUDINARY_CLOUD_NAME` | No | — | Cloudinary cloud name for image uploads. Leave empty if not using image upload. |
 | `VITE_CLOUDINARY_UPLOAD_PRESET` | No | — | Cloudinary unsigned upload preset. Leave empty if not using image upload. |
 
-> **Note:** `*.local` files are gitignored and never committed.
+> **Note:** `*.local` files are gitignored and never committed. None of the above is needed for demo mode — see below.
 
 ## Running Locally
 
-### Terminal 1: Start PocketBase
-
-```bash
-# From the project root
-
-# Windows
-.\backend\pocketbase-service.exe serve --http=127.0.0.1:8090 --dir=pb_data --migrationsDir=backend/pb_migrations
-
-# Linux / macOS (after downloading the PocketBase binary)
-# ./pocketbase serve --http=127.0.0.1:8090 --dir=pb_data --migrationsDir=backend/pb_migrations
-```
-
-This starts PocketBase on port 8090 with:
-- SQLite database in `backend/pb_data/`
-- All schema migrations applied automatically
-- Admin UI at `http://127.0.0.1:8090/_/`
-- REST API at `http://127.0.0.1:8090/api/`
-
-### Terminal 2: Start Vite dev server
+### Fastest: demo mode, no backend
 
 ```bash
 cd frontend && npm run dev
 ```
 
-The Vite dev server runs on port **8080** and the app is available at `http://localhost:8080`.
+Open `http://localhost:5173`, and click a "Try instantly" demo account on the
+login page. Everything runs in this browser's localStorage — no `.env`, no
+Docker, nothing to configure. This is the fastest way to work on UI-only
+changes.
 
-### Setting up the admin account
+### With the real backend
 
-1. Visit `http://localhost:8090/_/`
-2. Create the initial admin account
-3. Navigate to the **Users** collection in the PocketBase admin UI
-4. Create user accounts with appropriate roles (admin/staff/viewer)
+#### Terminal 1: Start the Supabase stack
 
-> The first user created through the app login will be the first record in the `users` collection. You can also create users directly in the PocketBase Admin UI.
+```bash
+# From the project root
+cd backend/supabase
+cp .env.example .env                          # fill in POSTGRES_PASSWORD / JWT_SECRET
+node ../scripts/generate-supabase-keys.mjs .env   # fills in ANON_KEY / SERVICE_ROLE_KEY
+docker compose up -d
+node ../scripts/bootstrap-platform-admin.mjs   # creates the first platform admin
+```
+
+This starts, among others:
+- Postgres on `127.0.0.1:54322`, with every migration in `backend/supabase/migrations/` applied automatically on first boot
+- GoTrue (auth) on `127.0.0.1:9999`
+- PostgREST (REST API) on `127.0.0.1:3001`
+- Kong (the public gateway everything above is really reached through) on `8000`
+
+#### Terminal 2: Start the Vite dev server
+
+```bash
+cd frontend
+# .env.local needs VITE_API_URL=http://localhost:8000 and
+# VITE_SUPABASE_ANON_KEY set to bootstrap-platform-admin.mjs's printed ANON_KEY
+npm run dev
+```
+
+Open `http://localhost:5173` and sign in with the platform admin account the
+bootstrap script created. Role `admin` always requires MFA — see the
+script's own printed next-steps for enrolling a TOTP factor before its first
+login will see any data (this is `app.mfa_satisfied()` in
+`backend/supabase/migrations/0000_auth_helpers.sql` working as designed, not
+a bug).
 
 ## Running with Docker (Production Simulation)
 
 ```bash
 # From the project root
 cd frontend && npm run build
-cd backend
-
-# Set encryption key (generate with: openssl rand -hex 16)
-# Windows PowerShell:
-$env:PB_ENCRYPTION_KEY = "your-32-char-hex-key"
-# Linux / macOS:
-# export PB_ENCRYPTION_KEY="your-32-char-hex-key"
-
-# Start the stack
+cd ../backend/supabase
 docker compose up -d --build
 ```
 
 - Frontend: http://localhost:8080
-- PocketBase admin: http://localhost:8090/_/
+- Kong gateway: http://localhost:8000
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production setup, including secret
+generation, pgBackRest continuous backups, and Cloudflare Tunnel.
 
 ## Available Scripts
 
@@ -105,7 +112,7 @@ All commands run from the `frontend/` directory:
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start Vite dev server on port 8080 with HMR |
+| `npm run dev` | Start Vite dev server on port 5173 with HMR |
 | `npm run build` | TypeScript type check + production build to `frontend/dist/` |
 | `npm run preview` | Preview the production build locally |
 | `npm run test` | Run all tests once (Vitest) |
@@ -119,7 +126,7 @@ All commands run from the `frontend/` directory:
 barangayos/
 ├── frontend/                  # React SPA
 │   ├── src/                   # Application source
-│   │   ├── api/               # 22 API client modules (one per collection)
+│   │   ├── api/               # 26 API client modules (real backend via @supabase/supabase-js, demo-mode branch via mockPocketBase.ts)
 │   │   ├── auth/              # Authentication, session, route guards
 │   │   ├── components/ui/     # 30+ reusable UI components
 │   │   ├── features/          # 12 domain feature modules
@@ -127,25 +134,25 @@ barangayos/
 │   │   ├── offline/           # IndexedDB queue, sync manager, indicator
 │   │   ├── pages/             # Page-level components
 │   │   └── routes/            # Route definitions
-│   ├── e2e/                   # Playwright E2E tests
+│   ├── e2e/                   # Playwright E2E tests (demo mode — no backend needed)
 │   ├── public/                # Static assets
 │   ├── nginx-entrypoint.sh    # Startup that copies placeholder TLS certs
-│   ├── nginx.conf             # Nginx config with API proxy + HTTPS
+│   ├── nginx.conf             # Nginx config, proxies /rest,/auth,/realtime,/functions to Kong
 │   ├── Dockerfile             # Multi-stage Docker build
 │   └── package.json           # Frontend dependencies
-├── backend/                   # PocketBase backend
-│   ├── pb_migrations/         # Database schema + RBAC migrations
-│   ├── Dockerfile             # Alpine + PocketBase Linux binary
-│   ├── docker-compose.yml     # Production stack configuration
-│   └── pocketbase-service.exe # Windows binary (local testing only, gitignored)
+├── backend/                   # Self-hosted Supabase backend
+│   ├── supabase/               # Postgres, GoTrue, PostgREST, Realtime, Edge Functions, Kong
+│   │   ├── migrations/         # SQL schema + Row-Level Security policies
+│   │   ├── functions/          # Edge Functions (Deno)
+│   │   └── docker-compose.yml  # The full stack
+│   ├── scripts/                 # bootstrap-platform-admin.mjs, load-test.mjs, test-tenant-isolation.mjs, ...
+│   └── webauthn-service/        # Passkey/WebAuthn sidecar
 ├── scripts/                   # Utility scripts
 │   ├── deploy.ps1             # Build frontend
 │   ├── deploy-prod.ps1        # Production deploy from GitHub artifact
-│   ├── e2e-server.mjs         # E2E test server orchestrator
-│   ├── export-data.sh         # Export PocketBase data via API
 │   ├── generate-certs.ps1       # Generate mkcert certs for LAN HTTPS
 │   ├── generate-icons.cjs       # Generate square PWA icons from logo
-│   └── healthcheck.sh         # PocketBase health check
+│   └── healthcheck.sh         # Backend health check (GoTrue)
 └── docs/                      # Documentation
     ├── ARCHITECTURE.md        # System design and data flow
     ├── DEVELOPMENT.md         # This guide
@@ -289,24 +296,24 @@ cd frontend && npm run build
 # 2. Output is in frontend/dist/ — static files ready for nginx
 
 # 3. Deploy with Docker
-cd backend && docker compose up -d --build
+cd ../backend/supabase && docker compose up -d --build
 ```
 
 > See [DEPLOYMENT.md](DEPLOYMENT.md) for complete production deployment instructions, including Cloudflare Tunnel setup and database backup configuration.
 
 ## Troubleshooting
 
-### PocketBase won't start
+### A backend service won't come up healthy
 
-- **Port already in use**: Make sure nothing else is running on port 8090. Change the port with `--http=127.0.0.1:8091` if needed.
-- **Binary not found**: Ensure `pocketbase-service.exe` (Windows) or `pocketbase` (Linux/macOS) exists in `backend/`. Download from [pocketbase.io/docs](https://pocketbase.io/docs/).
-- **Migration errors**: Delete `backend/pb_data/` and restart PocketBase to re-run all migrations.
+- **Port already in use**: Check nothing else is bound to `54322` (Postgres), `9999` (auth), `3001` (rest), or `8000` (Kong).
+- **`docker compose ps` shows "unhealthy"**: `docker compose logs <service>` — most first-boot failures are a missing `.env` value (`POSTGRES_PASSWORD`, `JWT_SECRET`, `ANON_KEY`/`SERVICE_ROLE_KEY` — see `backend/supabase/.env.example`).
+- **Migration errors**: `docker compose down -v` (removes the `db_data` volume) and `docker compose up -d db` again to re-run every migration in `backend/supabase/migrations/` from scratch.
 
 ### Vite dev server won't start
 
 - **Node.js version**: Verify you're on Node.js 20+ with `node --version`. Vite 8 requires Node 20+.
 - **Missing node_modules**: Run `npm install` in `frontend/`.
-- **Port conflict**: Vite defaults to port 8080. Change it in `vite.config.ts` if needed.
+- **Port conflict**: Vite defaults to port 5173. Change it in `vite.config.ts` if needed.
 
 ### Tests fail
 
@@ -318,8 +325,9 @@ cd backend && docker compose up -d --build
 - **TypeScript errors**: Run `npx tsc -b` to see all type errors. Fix them before building.
 - **Out of memory**: Add `--max-old-space-size=4096` to the build command: `NODE_OPTIONS="--max-old-space-size=4096" npm run build`
 
-### Login always fails
+### Login always fails (real backend)
 
-- PocketBase must be running with migrations applied. Check the PocketBase terminal for errors.
-- Visit `http://localhost:8090/_/` to verify PocketBase is accessible and create the admin account.
-- Verify `VITE_API_URL` in `.env.local` matches the PocketBase server address.
+- `auth`/`rest`/`kong` must all be up and healthy — `docker compose ps` from `backend/supabase/`.
+- Verify `VITE_API_URL` in `.env.local` is Kong's gateway (`http://localhost:8000`) and `VITE_SUPABASE_ANON_KEY` matches the `ANON_KEY` `generate-supabase-keys.mjs` printed.
+- `role=admin` accounts always require MFA (`app.mfa_satisfied()`) — a brand-new platform admin will see zero data until it enrolls a TOTP factor; see `bootstrap-platform-admin.mjs`'s printed next-steps.
+- Not troubleshooting the real backend at all? Demo mode (the "Try instantly" buttons on the login page) needs none of the above.

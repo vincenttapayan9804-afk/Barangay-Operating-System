@@ -1,4 +1,5 @@
-import { getClient } from './client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { getResident } from './residents'
 import type { ApiDocument } from './documents'
 import type { ApiBlotter } from './blotter'
@@ -9,21 +10,21 @@ import type { ApiBlotter } from './blotter'
  * failure (no SMTP configured, resident has no email on file, etc.) must
  * never block the status change that triggered it.
  *
- * Delivery goes through a custom PocketBase route (backend/pb_hooks/
- * notify.pb.js) rather than a record hook — see that file for why.
+ * Delivery goes through Edge Functions (backend/supabase/functions/
+ * notify-document-status, notify-hearing-scheduled — ports of PocketBase's
+ * backend/pb_hooks/notify.pb.js) rather than a database trigger — see those
+ * functions for why.
+ *
+ * Demo mode has no backend to deliver against — same silent no-op as
+ * before (the old PocketBase-era code attempted the fetch anyway and had it
+ * fail silently against an invalid URL; this is just an explicit version of
+ * the same behavior).
  */
 
-async function postNotify(path: string, body: Record<string, unknown>): Promise<void> {
+async function invokeNotify(fn: 'notify-document-status' | 'notify-hearing-scheduled', body: Record<string, unknown>): Promise<void> {
+  if (isDemoModeEnabled()) return
   try {
-    const client = getClient()
-    await fetch(`${client.baseURL}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: client.authStore.token,
-      },
-      body: JSON.stringify(body),
-    })
+    await getSupabase().functions.invoke(fn, { body })
   } catch {
     // Silent — notification failure should not block the main operation.
   }
@@ -36,7 +37,7 @@ export async function notifyDocumentStatus(doc: ApiDocument): Promise<void> {
     const resident = await getResident(doc.resident_id)
     const email = (resident as unknown as { email_address?: string }).email_address
     if (!email) return
-    await postNotify('/api/notify/document-status', {
+    await invokeNotify('notify-document-status', {
       to: email,
       resident_name: doc.resident_name,
       document_type: doc.document_type,
@@ -60,7 +61,7 @@ export async function notifyHearingScheduled(
   // notification says a hearing was scheduled and points recipients to the
   // barangay office for the specifics, rather than guessing at a date.
   if (!recipientEmail) return
-  await postNotify('/api/notify/hearing-scheduled', {
+  await invokeNotify('notify-hearing-scheduled', {
     to: recipientEmail,
     party_name: partyName,
     case_number: blotter.case_number,

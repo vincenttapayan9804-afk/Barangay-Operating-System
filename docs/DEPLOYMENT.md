@@ -2,7 +2,12 @@
 
 ## Architecture Overview
 
-The production deployment uses Docker with two containers:
+The production deployment is Docker Compose stack of ten containers, defined in
+`backend/supabase/docker-compose.yml`: **frontend** (nginx, SPA + reverse proxy), **kong**
+(API gateway), **auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime),
+**edge-runtime** (Deno Edge Functions), **db** (Postgres), **supavisor** (connection
+pooler), **meilisearch** (full-text search), **webauthn** (passkey sidecar), and **backup**
+(continuous pgBackRest backup).
 
 ```
                          ┌──────────────────────────────┐
@@ -18,19 +23,23 @@ The production deployment uses Docker with two containers:
                      │  nginx (port 8080)   │
                      │  + HTTPS (8443)      │
                      │  SPA + API proxy     │
-                     └──────────────────────┘
-                                │ /api/*
+                     └──────────┬──────────┘
+                                │ /rest/v1, /auth/v1, /realtime/v1, /functions/v1
                      ┌──────────┴──────────┐
-                     │ PocketBase (port 8090)│
-                     │   pb_data/ (volume)   │
-                     └─────────────────────┘
+                     │   kong (port 8000)   │
+                     └──┬───┬────┬─────┬────┘
+                        │   │    │     │
+                       rest auth realtime edge-runtime
+                        │   │    │     │
+                        └───┴────┴─────┴──→ db (Postgres, port 5432)
+                                              │
+                                        supavisor (pooled port 6543)
 
 LAN Users: http://192.168.x.x:8080 (through nginx, zero latency)
 Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → nginx, HTTPS)
-Direct:    http://192.168.x.x:8090 (PocketBase admin UI, LAN only)
 ```
 
-The nginx container serves the SPA and proxies `/api/*` and `/_/*` to PocketBase. The Cloudflare Tunnel exposes `localhost:8080` (nginx) to the internet. PocketBase port 8090 remains accessible on the LAN for direct admin access.
+See `docs/ARCHITECTURE.md`'s own diagram for the full container-to-container picture, including `meilisearch`, `webauthn`, and `backup`, none of which are reached directly by the browser. There is no PocketBase-style admin UI in this stack — table data is managed through the app itself (`/platform-admin` for tenant onboarding) or, for one-off operator tasks, directly via `psql` against `db`.
 
 ## Prerequisites
 
@@ -175,54 +184,65 @@ Visit `https://records.barangay.gov.ph/` — you should see the app login page.
 
 ### Step 2: Docker Deployment
 
-#### 2a. Build the frontend
+#### 2a. Generate secrets
 
 ```bash
-cd frontend
-npm run build
+cd backend/supabase
+cp .env.example .env
+openssl rand -base64 48   # run twice — for POSTGRES_PASSWORD and JWT_SECRET
+openssl rand -base64 48   # for SECRET_KEY_BASE (Realtime + Supavisor)
+openssl rand -hex 16      # for VAULT_ENC_KEY (must be exactly 32 hex chars, Supavisor)
 ```
 
-This produces static files in `frontend/dist/`.
-
-#### 2b. Set the encryption key
-
-PocketBase requires an encryption key for session management:
+Paste each into `.env`. Then generate the API keys that must agree with `JWT_SECRET`:
 
 ```bash
-# Generate a key
-openssl rand -hex 16
-# Example output: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+node ../scripts/generate-supabase-keys.mjs .env
+# prints ANON_KEY=... and SERVICE_ROLE_KEY=... — paste both into .env
 ```
 
-**Windows (PowerShell):**
-
-```powershell
-$env:PB_ENCRYPTION_KEY = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
-```
-
-**Linux / macOS:**
+#### 2b. Start the stack
 
 ```bash
-export PB_ENCRYPTION_KEY="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
-```
-
-#### 2c. Start the stack
-
-```bash
-cd backend
+cd backend/supabase
 docker compose up -d --build
 ```
 
-This starts:
-- **nginx** on port `8080` — serves the SPA and proxies API requests
-- **PocketBase** on port `8090` — REST API and admin UI
+This builds and starts all ten services (see Architecture Overview above). `db` and
+`backup` are built from `db.Dockerfile` (extends the official `supabase/postgres` image
+with the `pgbackrest` binary — see Step 5); everything else pulls a published image.
+First boot applies every file in `migrations/` in order via `init-migrations.sh`.
 
-#### 2d. Verify
+#### 2c. Verify
+
+```bash
+docker compose ps          # every service should show "healthy" within ~60s
+```
 
 | URL | What to check |
 |-----|---------------|
 | http://localhost:8080 | App login page loads |
-| http://localhost:8090/_/ | PocketBase admin login |
+| http://localhost:8000/auth/v1/health | `{"date":...,"description":"GoTrue is a user registration and authentication API","name":"GoTrue","version":"..."}` |
+| http://localhost:8000/rest/v1/ | An empty PostgREST root response (not an error) |
+
+#### 2d. Bootstrap the first platform admin
+
+There is no admin UI to click through for this — GoTrue's admin API only accepts the
+`service_role` key, which never reaches a browser:
+
+```bash
+cd backend
+SUPABASE_URL=http://localhost:8000 \
+SERVICE_ROLE_KEY=<the key from .env> \
+PLATFORM_ADMIN_EMAIL=you@example.com \
+PLATFORM_ADMIN_PASSWORD='a strong password' \
+node scripts/bootstrap-platform-admin.mjs
+```
+
+This does **not** enroll MFA — `app.mfa_satisfied()` (Row-Level Security) gates every
+policy for `role=admin` behind aal2, so the very first login shows zero rows anywhere
+until you complete TOTP enrollment (Settings → the passkey/MFA screen prompts for this on
+first admin login). That's expected, not a bug.
 
 ---
 
@@ -233,25 +253,18 @@ Create `frontend/.env.production` (gitignored, stays on the server):
 ```env
 VITE_API_URL=https://records.barangay.gov.ph
 VITE_LOCAL_API_URL=http://192.168.1.100:8080
+VITE_SUPABASE_ANON_KEY=<the ANON_KEY from backend/supabase/.env>
 VITE_CLOUDINARY_CLOUD_NAME=
 VITE_CLOUDINARY_UPLOAD_PRESET=
 ```
 
 Replace `192.168.1.100` with the server's actual static LAN IP.
 
-> **Important:** `VITE_API_URL` is the tunnel URL (HTTPS) so remote users get a secure connection. `VITE_LOCAL_API_URL` is the LAN IP so local users avoid tunnel latency. The app's smart URL resolver automatically selects the right one.
+> **Important:** `VITE_API_URL` is the tunnel URL (HTTPS) so remote users get a secure connection. `VITE_LOCAL_API_URL` is the LAN IP so local users avoid tunnel latency. The app's smart URL resolver automatically selects the right one — see `docs/ARCHITECTURE.md` "Smart URL Resolution." Both point at this same nginx (the SPA host), not directly at Kong — nginx proxies `/rest/v1`, `/auth/v1`, `/realtime/v1`, `/functions/v1` through to Kong itself (see `frontend/nginx.conf`), so the frontend only ever needs one origin.
 
-### About PB_ENCRYPTION_KEY
+`VITE_SUPABASE_ANON_KEY` is the long-lived anon JWT from `backend/supabase/.env` (generated in Step 2a) — safe to ship to the browser by design (it's the "logged out" role every RLS policy is written against), unlike `SERVICE_ROLE_KEY`, which must never leave the server.
 
-This environment variable is read by the PocketBase container at runtime. Set it in the environment before running `docker compose up`.
-
-You can also set it permanently:
-
-**Windows:** System Properties → Environment Variables → New → `PB_ENCRYPTION_KEY`
-
-**Linux:** Add `export PB_ENCRYPTION_KEY="your-key"` to `/etc/environment` or the systemd service file.
-
-> **Note:** `.env.production` and the encryption key are gitignored and never pushed to GitHub.
+> **Note:** `.env.production` and `backend/supabase/.env` are gitignored and never pushed to GitHub.
 
 ---
 
@@ -315,80 +328,70 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and 
 
 ### Step 5: Database Backup
 
-Two backup mechanisms are available. **Use Litestream as the primary mechanism** — it
-streams every write continuously, so a lost or corrupted volume costs seconds of data,
-not the minutes between periodic snapshots. The PocketBase Admin UI's built-in backup
-(below) is a fine secondary/manual snapshot to keep enabled alongside it, but shouldn't
-be your only line of defense.
+The Postgres equivalent of the old SQLite setup is **pgBackRest** (replaces
+`backend/litestream.yml`), already wired into `backend/supabase/docker-compose.yml` as
+two pieces working together: continuous WAL archiving (the `db` service's own
+`archive_command`, started the instant Postgres boots) and periodic full/incremental base
+backups (the `backup` service, `backend/supabase/backup/backup-cron.sh`). Together they
+give the same guarantee Litestream gave SQLite — a lost or corrupted volume costs seconds
+of data, not the interval between snapshots — plus point-in-time recovery, which a
+single-file WAL stream never supported.
 
-#### 5a. Continuous backups (Litestream) — recommended
+#### 5a. Configure the backup bucket
 
-A `litestream` sidecar container is already wired into `backend/docker-compose.yml`; it
-just needs credentials for any S3-compatible bucket (Cloudflare R2, Oracle Object
-Storage, AWS S3, ...).
+Any S3-compatible bucket works (Cloudflare R2, Oracle Object Storage, AWS S3, ...) — the
+same one you may have used for Litestream is fine, with a different path prefix.
 
 1. Create a bucket (e.g. `barangay-db-backup`) with your storage provider
 2. Create an access key scoped to that bucket (R2: **R2 → Manage API Tokens → Object
    Read & Write**; Oracle: **Object Storage → Customer Secret Keys**)
-3. Set these in `backend/.env` (see `backend/.env.example`):
+3. Set these in `backend/supabase/.env` (see `.env.example`):
 
    ```env
-   LITESTREAM_BUCKET=barangay-db-backup
-   LITESTREAM_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-   LITESTREAM_REGION=auto
-   LITESTREAM_ACCESS_KEY_ID=your-access-key-id
-   LITESTREAM_SECRET_ACCESS_KEY=your-secret-access-key
+   PGBACKREST_STANZA=barangay
+   BACKUP_S3_BUCKET=barangay-db-backup
+   BACKUP_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+   BACKUP_S3_REGION=auto
+   BACKUP_S3_ACCESS_KEY_ID=your-access-key-id
+   BACKUP_S3_SECRET_ACCESS_KEY=your-secret-access-key
    ```
 
-4. `docker compose up -d --build` — the `litestream` container starts replicating
-   `data.db` and `auxiliary.db` continuously (10s sync interval, 7-day retention)
-5. Verify: `docker compose logs litestream` should show periodic `"replicating to..."`
-   activity with no errors, and the configured bucket should start filling with
-   `generations/` objects within a minute
+4. `docker compose up -d --build` (from `backend/supabase`) — `db` starts continuously
+   archiving completed WAL segments to the bucket the moment each one fills; `backup`
+   waits for `db` to be reachable, runs `pgbackrest stanza-create` once, then loops
+   forever doing a full backup every Sunday (UTC) and an incremental backup every other
+   day
+5. Verify:
+   ```bash
+   docker compose logs backup      # should show "full backup" or "incremental backup" activity, no errors
+   docker compose exec db pgbackrest --stanza=barangay info   # shows the current backup set and its retention
+   ```
+   The configured bucket should also show WAL segments appearing under
+   `<repo1-path>/archive/` continuously, independent of the daily backup cycle.
 
-**Restoring from a Litestream backup** (disaster recovery — test this before you need it):
+#### 5b. Restoring from a backup (disaster recovery — test this before you need it)
 
 ```bash
-docker compose stop pocketbase
-docker run --rm -v barangay_pb_data:/pb/pb_data -v $(pwd)/litestream.yml:/etc/litestream.yml \
-  --env-file .env litestream/litestream:0.3 restore -config /etc/litestream.yml -o /pb/pb_data/data.db /pb/pb_data/data.db
-docker compose start pocketbase
+docker compose stop db
+docker compose run --rm backup pgbackrest --stanza=barangay --delta restore
+docker compose start db
 ```
+
+`--delta` restores only the files that differ from what's already on the volume — faster
+than a full restore when the volume isn't a total loss. Point-in-time recovery (restore
+to a specific timestamp rather than the latest backup) is `pgbackrest --stanza=barangay
+--type=time "--target=2026-01-15 09:00:00" restore` — see the [pgBackRest
+docs](https://pgbackrest.org/user-guide.html#pitr) for the full set of recovery targets.
 
 Run this against a scratch volume first to confirm the procedure actually works — an
 untested backup is not a backup.
 
-#### 5b. Periodic snapshot backups (PocketBase Admin UI) — secondary
+#### 5c. Verify retention
 
-1. Visit `http://localhost:8090/_/` and log in as admin
-2. Go to **Settings** → **Backups**
-3. Enable **Automatic backups**
-4. Set interval to **5 minutes** (or your preferred interval)
-
-#### 5c. Configure Cloudflare R2 for the Admin UI backups (or any S3-compatible storage)
-
-| Setting | Value |
-|---------|-------|
-| **Bucket** | `barangay-db-backup` |
-| **Endpoint** | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
-| **Region** | `auto` |
-| **Access Key ID** | Your R2 API token access key |
-| **Secret Access Key** | Your R2 API token secret key |
-
-**To get R2 credentials:**
-
-1. Cloudflare Dashboard → R2 → Create Bucket (name: `barangay-db-backup`)
-2. R2 → Account Details → Manage API Tokens
-3. Create API Token → **Object Read & Write**
-4. Scope to bucket `barangay-db-backup`
-5. Copy the **Access Key ID** and **Secret Access Key**
-
-> This can be the same bucket used for Litestream (5a) with a different path prefix, or
-> a separate bucket — either is fine.
-
-#### 5d. Verify
-
-Wait for the first backup cycle (up to 5 minutes), then check the R2 bucket to confirm backup files appear.
+`pgbackrest.conf`'s `repo1-retention-full=4` keeps the last 4 full backups (with this
+schedule, about a month) before pruning older ones along with the WAL segments they
+depended on. Adjust it if your bucket costs or compliance requirements call for a
+different window — see the pgBackRest docs' `retention` options.
 
 ### Step 6: Monitoring & Error Tracking
 
@@ -401,7 +404,8 @@ won't know something's wrong until a barangay tells you.
    React project
 2. Copy the project's DSN
 3. Set `VITE_SENTRY_DSN` in `frontend/.env.production` (and pass it as a build arg if building via
-   `docker compose` — already wired into `backend/docker-compose.yml`)
+   `docker compose` — already wired into `backend/supabase/docker-compose.yml`'s `frontend`
+   service)
 4. Rebuild — errors now report to Sentry automatically (`frontend/src/lib/sentry.ts`); leave it
    unset to run without error tracking, nothing else changes
 
@@ -412,77 +416,81 @@ barangay office calls you:
 
 1. Create a free monitor at [UptimeRobot](https://uptimerobot.com) or
    [Better Stack](https://betterstack.com) (both have free tiers)
-2. Target URL: `https://records.yourdomain.com/api/health` (or your LAN/tunnel URL)
+2. Target URL: `https://records.yourdomain.com/auth/v1/health` (or your LAN/tunnel URL) — GoTrue's
+   own health endpoint, reached through Kong; a 401 (missing apikey) still counts as "up" to most
+   uptime checkers since they only check for *a* response, but if yours insists on a 2xx, point it
+   at `/rest/v1/` instead (PostgREST's root, which answers without an apikey)
 3. Check interval: 5 minutes is plenty
 4. Point alerts at an email or phone number someone actually checks
 
-### Step 7: Phase 2 — Watching scale signals
+### Step 7: Watching scale signals
 
-This platform serves multiple barangays from one shared PocketBase/SQLite instance
-(`1785000027_multi_tenant_barangays.js`). SQLite scales well on reads but has a single
-writer lock for the whole database — not per tenant — so the risk as more barangays
-onboard isn't "does isolation still work" (that's covered by CI, Step 4d), it's "does the
-box still keep up." Watch these signals instead of guessing when to act.
+This platform serves multiple barangays from one shared Postgres database (see
+`docs/ARCHITECTURE.md` "Multi-Tenancy"). Postgres scales far better under concurrent
+writers than SQLite ever did — this is one of the migration's real, direct benefits, not
+just a lateral move — but the risk as more barangays onboard still isn't "does isolation
+still work" (that's covered by CI's tenant-isolation job), it's "does the box, and the
+pooler in front of it, still keep up." Watch these signals instead of guessing when to
+act.
 
 #### 7a. Run the scale-signal monitor periodically
 
-`backend/scripts/check-scale-signals.mjs` checks three things against a running instance
-and exits non-zero if any breaches its threshold:
+`backend/scripts/check-scale-signals.mjs` checks three things against the database
+directly and exits non-zero if any breaches its threshold:
 
 ```bash
 cd backend
-PB_URL=https://records.yourdomain.com \
-PB_SUPERUSER_EMAIL=you@example.com PB_SUPERUSER_PASSWORD=your-password \
-PB_DATA_DIR=/path/to/pb_data \
-NGINX_STATUS_URL=http://localhost:8080/nginx_status \
+DATABASE_URL=postgres://postgres:your-password@records.yourdomain.com:54322/postgres \
 node scripts/check-scale-signals.mjs
 ```
 
 | Signal | What it means | Default threshold |
 |---|---|---|
-| p95 write latency | Proxy for SQLite write-lock contention — rises sharply once concurrent writers start queuing | 500ms |
-| `data.db` growth rate | So storage/backup sizing isn't a surprise as tenants add records | 500 MB/day |
-| Concurrent nginx connections | Coarse load signal independent of PocketBase | 150 |
+| Write-statement p95 (pg_stat_statements, normal-distribution approximation) | Proxy for lock contention — rises sharply once concurrent writers start queuing | 500ms |
+| Database size growth rate (`pg_database_size()`) | So storage/backup sizing isn't a surprise as tenants add records | 500 MB/day |
+| Active connections (`pg_stat_activity`) | Load signal independent of any one service | 150 |
 
 Run it from cron every 15-30 minutes (`... || mail -s "BarangayOS scale alert" you@example.com`),
-or manually right after onboarding a new wave of barangays. `NGINX_STATUS_URL` requires the
-`/nginx_status` location added to `frontend/nginx.conf` — it's IP-restricted to localhost and the
-Docker network by default; widen the `allow` list there if your setup needs it.
+or manually right after onboarding a new wave of barangays. The `DATABASE_URL` role needs read
+access to `pg_stat_statements`/`pg_stat_activity` — the `postgres` superuser role from `.env`
+works; consider a dedicated read-only monitoring role (`grant pg_read_all_stats to ...`) instead
+of sharing the superuser password with a cron job if this runs somewhere less trusted than the
+host itself. Run `select pg_stat_statements_reset();` right after each check for a comparable
+per-run write-latency figure — otherwise the reported average keeps blending in older statements.
 
 #### 7b. Load test before each onboarding wave
 
 `backend/scripts/load-test.mjs` seeds a throwaway tenant with `CONCURRENCY` staff users and has
 them all hammer writes/reads against it for `DURATION_SECONDS`, reporting latency percentiles —
 this simulates the real risk (many staff across many barangays writing at once against the same
-shared database), not a single tenant's load.
+shared database), not a single tenant's load. It talks directly to `auth`/`rest` on their own
+ports (same Kong-bypassing approach as `scripts/healthcheck.sh` — apikey enforcement is a Kong
+concern, not something either service checks itself):
 
 ```bash
 cd backend
-PB_URL=https://staging.yourdomain.com \
-PB_SUPERUSER_EMAIL=you@example.com PB_SUPERUSER_PASSWORD=your-password \
-CONCURRENCY=50 DURATION_SECONDS=30 \
+AUTH_URL=http://localhost:9999 REST_URL=http://localhost:3001 \
+SERVICE_ROLE_KEY=... \
+CONCURRENCY=20 DURATION_SECONDS=30 \
 node scripts/load-test.mjs
 ```
 
-Run this against staging, not production — it generates real (throwaway) load and records. Set
-`CONCURRENCY` to roughly the number of staff you expect active at once across all onboarded
-barangays during a peak (e.g. month-end document requests), not the barangay count — 50 barangays
-with 2-3 active staff each during a rush is a `CONCURRENCY` of 100-150, not 50.
-
-> This is also how a real cross-tenant bug was caught while building this feature: an old
-> database-wide unique index on `household_number` (predating multi-tenancy) meant two barangays
-> could never both use the same household number — invisible in normal testing, but any load test
-> with more than one active tenant hits it immediately. Fixed in
-> `1785000031_tenant_scoped_uniqueness.js`. If a future migration adds a new unique field to a
-> tenant-owned collection, scope the index to `(barangay_id, field)`, not `(field)` alone.
+> This is also how a real cross-tenant bug was caught while building the original PocketBase-era
+> version of this feature: a database-wide unique index on `household_number` (predating
+> multi-tenancy) meant two barangays could never both use the same household number — invisible in
+> normal testing, but any load test with more than one active tenant hits it immediately. Fixed
+> (now as a Postgres partial/composite unique index scoped to `(barangay_id, household_number)`,
+> see `backend/supabase/migrations/0005_households.sql`) before this migration began, and worth
+> remembering as a class of bug: any future unique constraint on a tenant-owned table needs
+> `barangay_id` in it, not just the field itself.
 
 #### 7c. When a signal trips — decision table
 
 | Signal breached | Likely cause | Action |
 |---|---|---|
-| Write p95 climbing with tenant count, DB size flat | Write-lock contention | Vertically scale the VM first (more CPU helps SQLite's checkpoint/fsync work); if that doesn't help, it's time to plan sharding (grouping barangays across multiple PocketBase instances) — a bigger change, don't do it speculatively |
-| DB growth rate breach | Real data volume growth | Check Litestream backup retention/cost, and storage headroom on the host |
-| Connection count breach | More concurrent users than expected | Vertically scale first; if sustained, reconsider read caching for expensive dashboard aggregate queries |
+| Write p95 climbing with tenant count, DB size flat | Lock/IO contention | Check `supavisor`'s pool size and mode first (`POOLER_DEFAULT_POOL_SIZE`/`POOLER_MAX_CLIENT_CONN` in `.env`) — a saturated pool looks identical to real contention; vertically scale the VM next; if that doesn't help, it's time to plan sharding (grouping barangays across multiple Postgres instances) — a bigger change, don't do it speculatively |
+| DB growth rate breach | Real data volume growth | Check pgBackRest retention/cost (Step 5c), and storage headroom on the host |
+| Connection count breach | More concurrent users than expected, or a connection leak | Check `supavisor`'s own metrics before assuming load — a leak in one service holding connections open looks like organic growth otherwise; vertically scale first if it's genuine; if sustained, reconsider read caching for expensive dashboard aggregate queries |
 | Everything fine on Oracle Free Tier's 4 OCPU/24GB | — | No action — you have real headroom left |
 | Oracle Free Tier limits actually reached | Genuine growth past free-tier capacity | Move to a paid VPS (Hetzner is the cheapest reliable option, ~€4-6/mo) — this is the point where paying finally has a concrete justification, not before |
 
@@ -491,20 +499,18 @@ with 2-3 active staff each during a rush is a `CONCURRENCY` of 100-150, not 50.
 ### Step 8: Passkey sign-in (WebAuthn)
 
 Optional. Lets staff sign in with a fingerprint, face scan, or security key instead of a
-password. PocketBase has no native WebAuthn support, so a small sidecar service
-(`backend/webauthn-service/`) handles the actual attestation/assertion cryptography using the
-[`@simplewebauthn/server`](https://simplewebauthn.dev/) library, and mints a real PocketBase
-session (via the superuser impersonate API) once a passkey ceremony verifies. It's already wired
-into `backend/docker-compose.yml` and proxied at `/api/webauthn/` by nginx — it just needs a few
-environment variables set:
+password. Neither PocketBase nor GoTrue has native WebAuthn support, so the same sidecar
+service as before (`backend/webauthn-service/`) handles the actual attestation/assertion
+cryptography using the [`@simplewebauthn/server`](https://simplewebauthn.dev/) library —
+it now mints a real session via GoTrue's admin API instead of PocketBase's superuser
+impersonate API. It's wired into `backend/supabase/docker-compose.yml` and proxied at
+`/api/webauthn/` by nginx — it just needs a few environment variables set:
 
-1. Create a dedicated superuser account for the service (don't reuse your personal admin login):
-   in the PocketBase dashboard (`/_/`) → Settings → Superusers → create one, e.g.
-   `webauthn-service@yourdomain.com` with a long random password.
-2. Add to `.env`:
+1. Add to `backend/supabase/.env` (`ANON_KEY`/`SERVICE_ROLE_KEY` are already set from Step
+   2a — the webauthn service authenticates as `service_role`, reaching everything else
+   through Kong, so there's no separate "dedicated superuser account" step to do here
+   unlike the old PocketBase setup):
    ```bash
-   PB_SUPERUSER_EMAIL=webauthn-service@yourdomain.com
-   PB_SUPERUSER_PASSWORD=<the long random password above>
    WEBAUTHN_RP_ID=records.yourdomain.com      # your real domain, no scheme/port
    WEBAUTHN_RP_NAME=CLUSTR Barangay OS
    WEBAUTHN_ORIGINS=https://records.yourdomain.com
@@ -513,72 +519,86 @@ environment variables set:
    bound to it and won't work if it's wrong or changes later. `WEBAUTHN_ORIGINS` must exactly
    match the origin(s) the app is actually served from (scheme + host + port); comma-separate if
    there's more than one (e.g. a LAN address alongside the tunnel domain).
-3. `docker compose up -d --build webauthn` (or just redeploy — it's part of the normal
+2. `docker compose up -d --build webauthn` (or just redeploy — it's part of the normal
    `docker compose up -d --build` flow like every other service).
-4. Staff can now add a passkey from Settings → Passkeys, and sign in with "Sign in with a
+3. Staff can now add a passkey from Settings → Passkeys, and sign in with "Sign in with a
    passkey" on the login screen. Nothing changes for accounts that don't register one — password
    (+ MFA for admins) keeps working exactly as before.
 
 ### Multi-factor authentication (MFA)
 
-Admin-role accounts always require a second factor (password + emailed one-time code) at login —
-no configuration needed, this ships on by default. It requires SMTP to be configured in the
-PocketBase dashboard (`/_/` → Settings → Mail) or OTP emails won't send.
+Admin-role accounts always require a second factor at login — no configuration needed, this
+ships on by default (`app.mfa_satisfied()`, see `docs/ARCHITECTURE.md` "Multi-factor
+authentication"). Unlike the old PocketBase setup, the second factor is a **TOTP code from an
+authenticator app** (Google Authenticator, Authy, 1Password, etc.), not an emailed one-time code
+— nothing to configure server-side (no SMTP dependency for MFA itself); each account enrolls its
+own authenticator on first login that requires it, scanning a QR code shown by the login flow.
 
 Staff-role MFA is opt-in per barangay (not on by default — it adds real friction to routine daily
 logins, so it's a choice each tenant makes rather than a blanket requirement). A platform operator
 turns it on for a specific barangay from `/platform-admin` → find the barangay → **Staff MFA**
-toggle. Once enabled, every staff login in that barangay requires the same emailed one-time code
-as admins.
+toggle. Once enabled, every staff login in that barangay requires the same TOTP enrollment/
+verification as admins.
 
 ### Email notifications (document status, hearing scheduled)
 
 Residents with an email on file (`residents.email_address`) get an automatic email when their
 document request becomes ready for release or is released, and involved parties get one when a
 blotter case is moved to "hearing" status (if their contact field on the case looks like an email
-address). Uses the same SMTP configuration as MFA above (`/_/` → Settings → Mail) — no separate
-setup, and it fails silently (never blocks the underlying status change) if SMTP isn't configured
-or the resident has no email on file.
+address). Configured via the `SMTP_PASSWORD`/`SMTP_FROM_ADDRESS`/`SMTP_FROM_NAME` variables in
+`backend/supabase/.env` (separate from GoTrue's own `SMTP_*` vars used for password-recovery
+emails — same mail provider works for both, they're just read by different services) — fails
+silently (never blocks the underlying status change) if unset or the resident has no email on
+file.
 
-Delivery goes through a custom PocketBase route (`backend/pb_hooks/notify.pb.js`), not a record
-hook — this codebase already found that PocketBase 0.39.5's classic model hooks don't reliably
-fire for SDK/REST-driven writes (see `docs/ARCHITECTURE.md`'s Finance Audit Trail section for the
-first time this was hit), so the frontend calls the route explicitly right after a status update
-succeeds. `pb_hooks/` is baked into the Docker image and mounted via `--hooksDir` automatically —
-nothing to configure beyond SMTP itself.
+Delivery goes through the `notify-document-status`/`notify-hearing-scheduled` Edge Functions
+(`backend/supabase/functions/`), called explicitly by the frontend right after a status update
+succeeds — the same "not a database trigger" shape the old PocketBase route used, since Postgres
+triggers have no built-in way to send outbound HTTP/SMTP the way Edge Functions do without extra
+extensions. Nothing to configure beyond the SMTP vars above — the functions are already part of
+the `edge-runtime` container's mounted `functions/` volume.
 
 ### Full-text search (Meilisearch)
 
 Fuzzy, typo-tolerant search across residents, document requests, and blotter records — the
 dashboard search bar (top of every page) upgrades automatically once this is running; it falls
-back to the previous exact/prefix PocketBase-query search with zero configuration if it isn't.
+back to the previous exact/prefix per-table query with zero configuration if it isn't.
 
 **Works out of the box** with `docker compose up -d` — the `meilisearch` container starts
-alongside PocketBase and runs in "development" mode (no key required) unless you set
+alongside the rest of the stack and runs in "development" mode (no key required) unless you set
 `MEILI_MASTER_KEY`. For production, generate one and set `MEILI_ENV=production` alongside it in
-`.env` (see `.env.example`):
+`backend/supabase/.env`:
 
 ```bash
 MEILI_MASTER_KEY=$(openssl rand -hex 32)
 MEILI_ENV=production
 ```
 
+Then, once (per deployment, not per boot — Edge Functions have no equivalent of PocketBase's
+"runs on every boot" hook code):
+
+```bash
+cd backend
+MEILI_URL=http://localhost:7700 MEILI_MASTER_KEY=<the key above> node scripts/setup-search-indexes.mjs
+```
+
 **The frontend never talks to Meilisearch directly and never sees a Meilisearch key.** Every
-search query and every index write is proxied through two authenticated PocketBase routes
-(`backend/pb_hooks/search.pb.js`), which force `barangay_id` from the signed-in session — never
-from anything the client sends — so tenant isolation for search can't be bypassed by a modified
-frontend the way an unenforced client-side filter could be. Per-role visibility matches the rest
-of the app too (a `viewer` account can search residents and blotter records but not the document
-queue, same as what that role can already see in the UI). `meilisearch` has no host port published
-— it's reachable only from `pocketbase` over the internal Docker network.
+search query and every index write is proxied through the `search-index`/`search-query` Edge
+Functions (`backend/supabase/functions/search-index/`, `search-query/`), which force `barangay_id`
+from the signed-in session — never from anything the client sends — so tenant isolation for
+search can't be bypassed by a modified frontend the way an unenforced client-side filter could be.
+Per-role visibility matches the rest of the app too (a `viewer` account can search residents and
+blotter records but not the document queue, same as what that role can already see in the UI).
+`meilisearch` has no host port published — it's reachable only from `edge-runtime` over the
+internal Docker network.
 
 Indexes populate automatically as staff create/edit records — there's no bulk backfill step for a
 fresh deployment, since new tenants start with no data anyway. If you're restoring from a backup
-or otherwise need to reindex existing records, the simplest path is: `docker compose restart
-meilisearch pocketbase` won't do it (indexing only happens on writes) — re-saving each record once
-(e.g. a no-op edit + save) re-triggers indexing, or clear the affected Meilisearch indexes and
-write a one-off script against the API modules in `frontend/src/api/searchSync.ts` for a proper
-bulk backfill if you're carrying over a large existing dataset.
+or otherwise need to reindex existing records, the simplest path is: restarting `meilisearch`/
+`edge-runtime` won't do it (indexing only happens on writes) — re-saving each record once (e.g. a
+no-op edit + save) re-triggers indexing, or clear the affected Meilisearch indexes and write a
+one-off script against the API modules in `frontend/src/api/searchSync.ts` for a proper bulk
+backfill if you're carrying over a large existing dataset.
 
 ---
 
@@ -650,23 +670,16 @@ If automatic IP detection fails, pass it manually:
 .\scripts\generate-certs.ps1 -LanIp 192.168.1.100
 ```
 
-### Step 2: Enable the cert volume mount
+### Step 2: Place the certs
 
-Edit `backend/docker-compose.yml` and **uncomment** the certs volume line:
-
-```yaml
-frontend:
-  # ...
-  ports:
-    - "8080:80"
-    - "8443:443"
-  volumes: [ "./certs:/etc/nginx/certs" ]    # ← uncomment this
-```
+`backend/supabase/docker-compose.yml`'s `frontend` service already mounts `../certs` (i.e.
+`backend/certs/`) to `/etc/nginx/certs` — no compose edit needed. Just make sure
+`generate-certs.ps1` wrote its output to `backend/certs/`.
 
 ### Step 3: Rebuild and restart
 
 ```powershell
-cd backend
+cd backend/supabase
 docker compose up -d --build
 ```
 
@@ -701,9 +714,9 @@ Once the cert is trusted, the PWA install button will appear in the sidebar.
                         │   :80  (HTTP)        │
                         │   :443 (HTTPS, mkcert)│
                         └──────────┬──────────┘
-                                   │ /api/*
+                                   │ /rest/v1, /auth/v1, /realtime/v1, /functions/v1
                         ┌──────────┴──────────┐
-                        │ PocketBase (port 8090)│
+                        │   kong (port 8000)   │
                         └─────────────────────┘
 
   HTTP:   http://192.168.x.x:8080     (no PWA, no install)
@@ -721,8 +734,11 @@ Once the cert is trusted, the PWA install button will appear in the sidebar.
 docker compose logs
 
 # Specific service
-docker compose logs nginx
-docker compose logs pocketbase
+docker compose logs frontend
+docker compose logs db
+docker compose logs auth
+docker compose logs rest
+docker compose logs kong
 
 # Follow logs in real-time
 docker compose logs -f
@@ -731,8 +747,8 @@ docker compose logs -f
 ### Restart containers
 
 ```bash
-docker compose restart nginx    # Restart nginx only
-docker compose restart pocketbase  # Restart PocketBase only
+docker compose restart frontend  # Restart nginx only
+docker compose restart auth      # Restart GoTrue only
 docker compose restart           # Restart all
 ```
 
@@ -745,7 +761,7 @@ docker compose up -d --build
 ### Check container status
 
 ```bash
-docker compose ps
+docker compose ps    # every service should show "healthy" — see each one's healthcheck in docker-compose.yml
 ```
 
 ### Login shows "Something went wrong"
@@ -753,6 +769,7 @@ docker compose ps
 - Open DevTools → Network tab → check which URL the POST request goes to
 - If it's the tunnel URL but you're on LAN, the local IP in `.env.production` might be wrong
 - Run `ipconfig` (Windows) or `ip a` (Linux) on the server, check the IPv4 address, and update `VITE_LOCAL_API_URL`
+- Check `docker compose logs auth` for the actual GoTrue error (invalid credentials, MFA required, disabled signup, etc.)
 
 ### Tunnel returns 503
 
@@ -767,10 +784,18 @@ docker compose ps
 - Verify the new container image was built: `docker compose up -d --build`
 - Check that nginx is serving the updated `dist/` files
 
-### PocketBase crashes on startup
+### A service won't come up healthy
 
-- Check the PocketBase logs: `docker compose logs pocketbase`
-- The `pb_data/` directory may be corrupted. Stop the container, back up `pb_data/`, delete it, and restart (migrations will re-run)
+- `docker compose logs <service>` — `auth`/`rest`/`realtime` all fail fast and log a clear reason
+  if they can't reach `db`, or if `JWT_SECRET`/`ANON_KEY`/`SERVICE_ROLE_KEY` don't agree (they're
+  all derived from the same `JWT_SECRET` via `generate-supabase-keys.mjs` — regenerating one
+  without the others is the most common cause of a confusing 401 everywhere)
+- `docker compose logs db` — if migrations failed partway on first boot, the `db_data` volume may
+  be in a half-migrated state; for a throwaway/dev volume, `docker compose down -v` and re-run
+  Step 2 is the fastest fix (never do this against a volume holding real tenant data — back it up
+  first, see Step 5)
+- `edge-runtime` failing to load a specific function: check `docker compose logs edge-runtime` —
+  it logs the function name and the underlying Deno error
 
 ---
 
@@ -779,11 +804,13 @@ docker compose ps
 ### Build and deploy
 
 ```bash
-cd frontend && npm run build
-export PB_ENCRYPTION_KEY="your-32-char-hex-key"  # Linux
-# $env:PB_ENCRYPTION_KEY = "your-key"            # Windows
-cd backend && docker compose up -d --build
+cd backend/supabase && docker compose up -d --build
 ```
+
+`frontend/.env.production`'s `VITE_SUPABASE_ANON_KEY`/`VITE_API_URL` and
+`backend/supabase/.env`'s secrets (Step 2a) must already be in place — there is no
+separate encryption-key step the way PocketBase's `PB_ENCRYPTION_KEY` was; `JWT_SECRET`
+is this stack's equivalent root secret and only needs setting once, at first boot.
 
 ### Deploy via Git push (self-hosted runner)
 
@@ -796,8 +823,8 @@ git push origin main
 ### Check server health
 
 ```bash
-curl http://localhost:8080/api/health
-curl https://records.barangay.gov.ph/api/health
+curl http://localhost:9999/health                       # GoTrue, direct (bypasses Kong's apikey requirement)
+curl -H "apikey: $ANON_KEY" http://localhost:8000/rest/v1/  # PostgREST, through Kong
 ```
 
 ### Generate LAN HTTPS certificates
@@ -806,10 +833,11 @@ curl https://records.barangay.gov.ph/api/health
 .\scripts\generate-certs.ps1
 ```
 
-After generating certs, uncomment `volumes: [ "./certs:/etc/nginx/certs" ]` in `backend/docker-compose.yml` and rebuild:
+`backend/supabase/docker-compose.yml`'s `frontend` service already mounts
+`backend/certs/` — just rebuild after generating certs:
 
 ```bash
-cd backend && docker compose up -d --build
+cd backend/supabase && docker compose up -d --build
 ```
 
 ### Generate square PWA icons

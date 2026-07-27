@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { hasRole } from '@/auth/session'
+import { hasRole, getCurrentUser } from '@/auth/session'
 import { cn, formatDate } from '@/lib/utils'
 import { DataTable, type Column } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -165,9 +165,7 @@ export default function AgendaPage() {
         const data = { ...itemForm }
 
         if (itemForm.minutes && itemForm.minutes.trim()) {
-          const { getClient } = await import('@/api/client')
-          const authStore = getClient().authStore
-          data.submitted_by = (authStore.model as Record<string, unknown>)?.name as string || ''
+          data.submitted_by = getCurrentUser()?.name || ''
         }
 
         const created = await createAgendaItem(data)

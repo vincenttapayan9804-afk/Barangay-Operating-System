@@ -15,11 +15,6 @@ permissions:
 
 env:
   NODE_VERSION: '22'
-  E2E_ADMIN_EMAIL: admin@e2e.local
-  E2E_ADMIN_PASSWORD: E2eAdmin123!
-  E2E_USER_EMAIL: test@barangay.gov.ph
-  E2E_USER_PASSWORD: Test1234!
-  VITE_API_URL: http://127.0.0.1:8090
 
 defaults:
   run:
@@ -161,33 +156,56 @@ jobs:
   tenant-isolation:
     name: Tenant Isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
-        working-directory: backend
+        working-directory: backend/supabase
     env:
-      PB_VERSION: '0.39.5'
-      PB_URL: http://127.0.0.1:8090
-      PB_SUPERUSER_EMAIL: admin@e2e.local
-      PB_SUPERUSER_PASSWORD: E2eAdmin123!
+      AUTH_URL: http://127.0.0.1:9999
+      REST_URL: http://127.0.0.1:3001
     steps:
       - uses: actions/checkout@v7
-      - name: Download PocketBase
+      # Real "start Postgres/GoTrue/PostgREST" per the migration plan's
+      # Phase 7 scope — no Kong, no realtime/edge-runtime/webauthn/frontend.
+      # `db`'s docker-entrypoint-initdb.d applies migrations/*.sql
+      # automatically on first boot (init-migrations.sh), so there is no
+      # separate "apply migrations" step: db reporting healthy already means
+      # migrated.
+      - name: Generate stack secrets
         run: |
-          curl -sL -o /tmp/pb.zip "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip"
-          unzip -q /tmp/pb.zip -d /tmp/pb
-      - name: Apply migrations + create test superuser
-        run: /tmp/pb/pocketbase superuser upsert "$PB_SUPERUSER_EMAIL" "$PB_SUPERUSER_PASSWORD" --dir=/tmp/pb_data --migrationsDir=pb_migrations --automigrate
-      - name: Start PocketBase
+          cp .env.example .env
+          POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+          JWT_SECRET="$(openssl rand -hex 32)"
+          sed -i "s#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=${POSTGRES_PASSWORD}#" .env
+          sed -i "s#^JWT_SECRET=.*#JWT_SECRET=${JWT_SECRET}#" .env
+          KEYS="$(JWT_SECRET="${JWT_SECRET}" node ../scripts/generate-supabase-keys.mjs)"
+          ANON_KEY="$(echo "${KEYS}" | grep '^ANON_KEY=' | cut -d= -f2-)"
+          SERVICE_ROLE_KEY="$(echo "${KEYS}" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)"
+          sed -i "s#^ANON_KEY=.*#ANON_KEY=${ANON_KEY}#" .env
+          sed -i "s#^SERVICE_ROLE_KEY=.*#SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}#" .env
+          echo "SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> "$GITHUB_ENV"
+      - name: Start db, auth, rest
+        run: docker compose up -d --build db auth rest
+      - name: Wait for auth + rest to report healthy
         run: |
-          /tmp/pb/pocketbase serve --http=127.0.0.1:8090 --dir=/tmp/pb_data --migrationsDir=pb_migrations --automigrate > /tmp/pb_server.log 2>&1 &
-          for i in $(seq 1 20); do
-            curl -sf http://127.0.0.1:8090/api/health && break
-            sleep 1
+          for i in $(seq 1 60); do
+            AUTH_STATUS="$(docker inspect --format='{{.State.Health.Status}}' barangay-supabase-auth 2>/dev/null || echo starting)"
+            REST_STATUS="$(docker inspect --format='{{.State.Health.Status}}' barangay-supabase-rest 2>/dev/null || echo starting)"
+            if [ "$AUTH_STATUS" = "healthy" ] && [ "$REST_STATUS" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
           done
+          echo "auth/rest did not become healthy in time" >&2
+          docker compose logs
+          exit 1
       - name: Run tenant isolation checks
+        working-directory: backend
         run: node scripts/test-tenant-isolation.mjs
-      - name: Show PocketBase log on failure
+      - name: Show stack logs on failure
         if: failure()
-        run: cat /tmp/pb_server.log || true
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 

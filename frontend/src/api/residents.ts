@@ -1,8 +1,11 @@
-import type { RecordModel } from 'pocketbase'
 import { getClient } from './client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 import { handleApiError } from './errorHandler'
 import { createActivity } from './activity'
 import { indexResident, deleteResidentFromIndex } from './searchSync'
+import { orIlike } from './supabaseFilters'
+import type { BaseRecord } from './types'
 import type { PaginatedResult } from '@/lib/utils'
 
 const COLLECTION = 'residents'
@@ -92,7 +95,7 @@ export interface InhabitantData {
   data_set?: string
 }
 
-export interface ApiResident extends RecordModel {
+export interface ApiResident extends BaseRecord {
   // Classification
   type_of_resident: string
   household_id: string
@@ -173,19 +176,31 @@ export interface ApiResident extends RecordModel {
 
   // Soft-delete
   is_deceased: boolean
-
-  updated: string
 }
 
 export async function searchResidents(query: string): Promise<ApiResident[]> {
   try {
     if (query.length < 3) return []
-    const filter = getClient().filter('(first_name ~ {:q} || last_name ~ {:q}) && is_deceased = false', { q: query })
-    return await getClient().collection(COLLECTION).getFullList<ApiResident>({
-      filter,
-      sort: 'last_name,first_name',
-      perPage: 15,
-    })
+
+    if (isDemoModeEnabled()) {
+      const filter = getClient().filter('(first_name ~ {:q} || last_name ~ {:q}) && is_deceased = false', { q: query })
+      return await getClient().collection(COLLECTION).getFullList<ApiResident>({
+        filter,
+        sort: 'last_name,first_name',
+        perPage: 15,
+      })
+    }
+
+    const { data, error } = await getSupabase()
+      .from(COLLECTION)
+      .select('*')
+      .or(orIlike(['first_name', 'last_name'], query))
+      .eq('is_deceased', false)
+      .order('last_name')
+      .order('first_name')
+      .limit(15)
+    if (error) throw error
+    return data as ApiResident[]
   } catch (err) {
     throw handleApiError(err)
   }
@@ -193,11 +208,19 @@ export async function searchResidents(query: string): Promise<ApiResident[]> {
 
 export async function getResidents(params?: { household_id?: string }): Promise<ApiResident[]> {
   try {
-    const query: Record<string, unknown> = { sort: '-id' }
-    if (params?.household_id) {
-      query.filter = getClient().filter('household_id = {:id}', { id: params.household_id.trim() })
+    if (isDemoModeEnabled()) {
+      const query: Record<string, unknown> = { sort: '-id' }
+      if (params?.household_id) {
+        query.filter = getClient().filter('household_id = {:id}', { id: params.household_id.trim() })
+      }
+      return await getClient().collection(COLLECTION).getFullList<ApiResident>(query)
     }
-    return await getClient().collection(COLLECTION).getFullList<ApiResident>(query)
+
+    let q = getSupabase().from(COLLECTION).select('*')
+    if (params?.household_id) q = q.eq('household_id', params.household_id.trim())
+    const { data, error } = await q.order('id', { ascending: false })
+    if (error) throw error
+    return data as ApiResident[]
   } catch (err) {
     throw handleApiError(err)
   }
@@ -205,7 +228,12 @@ export async function getResidents(params?: { household_id?: string }): Promise<
 
 export async function getResident(id: string): Promise<ApiResident> {
   try {
-    return await getClient().collection(COLLECTION).getOne<ApiResident>(id)
+    if (isDemoModeEnabled()) {
+      return await getClient().collection(COLLECTION).getOne<ApiResident>(id)
+    }
+    const { data, error } = await getSupabase().from(COLLECTION).select('*').eq('id', id).single()
+    if (error) throw error
+    return data as ApiResident
   } catch (err) {
     throw handleApiError(err)
   }
@@ -213,7 +241,18 @@ export async function getResident(id: string): Promise<ApiResident> {
 
 export async function createResident(data: InhabitantData): Promise<ApiResident> {
   try {
-    const result = await getClient().collection(COLLECTION).create<ApiResident>({ ...data, data_set: 'BIPS' })
+    let result: ApiResident
+    if (isDemoModeEnabled()) {
+      result = await getClient().collection(COLLECTION).create<ApiResident>({ ...data, data_set: 'BIPS' })
+    } else {
+      const { data: row, error } = await getSupabase()
+        .from(COLLECTION)
+        .insert({ ...data, data_set: 'BIPS' })
+        .select()
+        .single()
+      if (error) throw error
+      result = row as ApiResident
+    }
     createActivity('create', COLLECTION, result.id, `Created resident: ${result.first_name} ${result.last_name}`)
     indexResident(result)
     return result
@@ -225,24 +264,38 @@ export async function createResident(data: InhabitantData): Promise<ApiResident>
 export async function updateResident(id: string, data: Partial<InhabitantData>): Promise<ApiResident> {
   try {
     // Cascade: if household_id is being cleared, remove the linked household member record
-    if (data.hasOwnProperty('household_id') && !data.household_id) {
+    if (Object.prototype.hasOwnProperty.call(data, 'household_id') && !data.household_id) {
       try {
-        const members = await getClient().collection('household_members').getFullList({
-          filter: getClient().filter('resident_id = {:id}', { id }),
-        })
-        for (const m of members) {
-          await getClient().collection('household_members').delete(m.id)
+        if (isDemoModeEnabled()) {
+          const members = await getClient().collection('household_members').getFullList({
+            filter: getClient().filter('resident_id = {:id}', { id }),
+          })
+          for (const m of members) {
+            await getClient().collection('household_members').delete(m.id)
+          }
+        } else {
+          const { data: members } = await getSupabase().from('household_members').select('id').eq('resident_id', id)
+          for (const m of members ?? []) {
+            await getSupabase().from('household_members').delete().eq('id', (m as { id: string }).id)
+          }
         }
       } catch { /* ignore cascade errors */ }
     }
 
     const payload = { ...data, data_set: 'BIPS' } as Record<string, unknown>
-    // PocketBase requires null (not undefined) to clear a relation field
+    // A relation field needs an explicit null (not undefined/empty string) to clear it.
     if (payload.household_id === undefined || payload.household_id === '') {
       payload.household_id = null
     }
 
-    const result = await getClient().collection(COLLECTION).update<ApiResident>(id, payload)
+    let result: ApiResident
+    if (isDemoModeEnabled()) {
+      result = await getClient().collection(COLLECTION).update<ApiResident>(id, payload)
+    } else {
+      const { data: row, error } = await getSupabase().from(COLLECTION).update(payload).eq('id', id).select().single()
+      if (error) throw error
+      result = row as ApiResident
+    }
     createActivity('update', COLLECTION, id, `Updated resident: ${result.first_name} ${result.last_name}`)
     indexResident(result)
     return result
@@ -253,7 +306,12 @@ export async function updateResident(id: string, data: Partial<InhabitantData>):
 
 export async function deleteResident(id: string): Promise<boolean> {
   try {
-    await getClient().collection(COLLECTION).delete(id)
+    if (isDemoModeEnabled()) {
+      await getClient().collection(COLLECTION).delete(id)
+    } else {
+      const { error } = await getSupabase().from(COLLECTION).delete().eq('id', id)
+      if (error) throw error
+    }
     createActivity('delete', COLLECTION, id, 'Deleted resident')
     deleteResidentFromIndex(id)
     return true
@@ -268,15 +326,26 @@ export async function getResidentsPage(
   options: { search?: string; sitio_purok?: string; tags?: string[] } = {},
 ): Promise<PaginatedResult<ApiResident>> {
   try {
-    const filters: string[] = []
-    if (options.search) {
-      filters.push(getClient().filter('(first_name ~ {:q} || last_name ~ {:q} || mobile_number ~ {:q})', { q: options.search }))
+    if (isDemoModeEnabled()) {
+      const filters: string[] = []
+      if (options.search) {
+        filters.push(getClient().filter('(first_name ~ {:q} || last_name ~ {:q} || mobile_number ~ {:q})', { q: options.search }))
+      }
+      if (options.sitio_purok) filters.push(getClient().filter('sitio_purok = {:p}', { p: options.sitio_purok }))
+      const query: Record<string, unknown> = { sort: '-id' }
+      if (filters.length > 0) query.filter = filters.join(' && ')
+      const result = await getClient().collection(COLLECTION).getList<ApiResident>(page, perPage, query)
+      return { items: result.items, totalItems: result.totalItems, totalPages: result.totalPages }
     }
-    if (options.sitio_purok) filters.push(getClient().filter('sitio_purok = {:p}', { p: options.sitio_purok }))
-    const query: Record<string, unknown> = { sort: '-id' }
-    if (filters.length > 0) query.filter = filters.join(' && ')
-    const result = await getClient().collection(COLLECTION).getList<ApiResident>(page, perPage, query)
-    return { items: result.items, totalItems: result.totalItems, totalPages: result.totalPages }
+
+    let q = getSupabase().from(COLLECTION).select('*', { count: 'exact' })
+    if (options.search) q = q.or(orIlike(['first_name', 'last_name', 'mobile_number'], options.search))
+    if (options.sitio_purok) q = q.eq('sitio_purok', options.sitio_purok)
+    const from = (page - 1) * perPage
+    const { data, error, count } = await q.order('id', { ascending: false }).range(from, from + perPage - 1)
+    if (error) throw error
+    const totalItems = count ?? 0
+    return { items: data as ApiResident[], totalItems, totalPages: Math.max(1, Math.ceil(totalItems / perPage)) }
   } catch (err) {
     throw handleApiError(err)
   }
@@ -290,7 +359,14 @@ export async function getResidentsSummary(): Promise<{
   registered_voters: number
 }> {
   try {
-    const all = await getClient().collection(COLLECTION).getFullList<ApiResident>({ requestKey: 'residents-summary' })
+    let all: ApiResident[]
+    if (isDemoModeEnabled()) {
+      all = await getClient().collection(COLLECTION).getFullList<ApiResident>({ requestKey: 'residents-summary' })
+    } else {
+      const { data, error } = await getSupabase().from(COLLECTION).select('*')
+      if (error) throw error
+      all = data as ApiResident[]
+    }
     return {
       total: all.length,
       voters: all.filter((r) => r.registered_voter).length,

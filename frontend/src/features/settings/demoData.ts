@@ -13,6 +13,8 @@ import { createAppropriation } from '@/api/appropriations'
 import { createDisbursement } from '@/api/disbursements'
 import { createRevenue } from '@/api/revenues'
 import { getClient } from '@/api/client'
+import { getSupabase } from '@/lib/supabaseClient'
+import { isDemoModeEnabled } from '@/lib/demoAccounts'
 
 export interface CollectionDef {
   id: string
@@ -655,7 +657,13 @@ export async function eraseCollections(
   const errors: string[] = []
   let total = 0
   const eraseSet = new Set(ids)
-  const pb = getClient()
+  const demo = isDemoModeEnabled()
+  const pb = demo ? getClient() : null
+  const supabase = demo ? null : getSupabase()
+  // Any real id never matches this, so `.neq('id', ZERO_UUID)` selects every
+  // row — supabase-js requires at least one filter on delete()/update() as
+  // a guard against an accidental unfiltered whole-table wipe.
+  const ZERO_UUID = '00000000-0000-0000-0000-000000000000'
 
   const eraseOrder: { id: string; collection: string }[] = [
     { id: 'activity', collection: 'activity_logs' },
@@ -681,14 +689,20 @@ export async function eraseCollections(
     onProgress(`Erasing ${label}...`)
 
     try {
-      const records = await pb.collection(collection).getFullList<{ id: string }>({ requestKey: null })
-      for (const record of records) {
-        try {
-          await pb.collection(collection).delete(record.id, { requestKey: null })
-          total++
-        } catch {
-          // individual delete failure — skip (may be 403 for activity_logs)
+      if (demo) {
+        const records = await pb!.collection(collection).getFullList<{ id: string }>({ requestKey: null })
+        for (const record of records) {
+          try {
+            await pb!.collection(collection).delete(record.id)
+            total++
+          } catch {
+            // individual delete failure — skip (may be 403 for activity_logs)
+          }
         }
+      } else {
+        const { data, error } = await supabase!.from(collection).delete().neq('id', ZERO_UUID).select('id')
+        if (error) throw error
+        total += (data ?? []).length
       }
     } catch (e) {
       errors.push(`${label}: ${e instanceof Error ? e.message : 'Failed to list records'}`)
