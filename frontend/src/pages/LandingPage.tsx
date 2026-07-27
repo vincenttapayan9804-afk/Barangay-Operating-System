@@ -25,6 +25,12 @@ import {
   Globe2,
   Target,
   Sparkles,
+  Fingerprint,
+  KeyRound,
+  Image as ImageIcon,
+  Search,
+  Mail,
+  HardDrive,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ClustrMark } from '@/components/ClustrLogo'
@@ -37,15 +43,16 @@ const navLinks = [
   { href: '#features', label: 'Features' },
   { href: '#platform', label: 'Platform' },
   { href: '#security', label: 'Security' },
+  { href: '#integrations', label: 'Integrations' },
   { href: '#faq', label: 'FAQ' },
 ]
 
 const capabilities = [
-  'Role-Based Access Control',
+  'Server-Enforced RBAC (RLS)',
+  'MFA · TOTP + WebAuthn',
+  'Tamper-Evident Audit Trail',
   'Offline-First Sync',
-  'Full Audit Trail',
   'Installable PWA',
-  'Automated Backups',
   'Open Source · MIT',
 ]
 
@@ -133,6 +140,45 @@ const pillars = [
   },
 ]
 
+const integrations = [
+  {
+    icon: KeyRound,
+    title: 'Self-Hosted Supabase Stack',
+    description:
+      'GoTrue auth, PostgREST API, and a Kong gateway with rate-limiting in front of a Postgres database — the same production-grade building blocks Supabase Cloud runs, deployed entirely under your own control.',
+  },
+  {
+    icon: Fingerprint,
+    title: 'WebAuthn / Passkeys',
+    description:
+      'Hardware-backed, phishing-resistant passwordless login sits alongside TOTP — enrolled the same way as any modern passkey-enabled app.',
+  },
+  {
+    icon: ImageIcon,
+    title: 'Signed Cloudinary Uploads',
+    description:
+      'Asset photo uploads are signed server-side on request — no exposed upload presets, no unauthenticated write path into your media library.',
+  },
+  {
+    icon: Search,
+    title: 'Meilisearch Full-Text Search',
+    description:
+      'Fast, typo-tolerant search across residents, households, and case records once enabled for your deployment.',
+  },
+  {
+    icon: Mail,
+    title: 'SMTP Notifications',
+    description:
+      'Automated email alerts when a document request changes status or a hearing is scheduled.',
+  },
+  {
+    icon: HardDrive,
+    title: 'S3-Compatible Continuous Backup',
+    description:
+      'Continuous, near-real-time database replication to any S3-compatible object store, on top of periodic snapshots.',
+  },
+]
+
 const aboutValues = [
   {
     icon: Target,
@@ -176,6 +222,14 @@ const faqs = [
   {
     q: 'What roles and permissions are available?',
     a: 'Admin, Staff, and Viewer roles, each with permissions enforced on the server — not just hidden UI elements. A viewer account can never perform an admin-only action, even by calling the API directly.',
+  },
+  {
+    q: 'How do you protect against brute-force login attempts?',
+    a: 'The API gateway rate-limits authentication and write-heavy endpoints by source IP, and every account can enroll multi-factor authentication — TOTP or a WebAuthn passkey — for phishing-resistant sign-in.',
+  },
+  {
+    q: 'Can our audit logs be silently altered?',
+    a: 'No. Activity and finance audit-log entries are SHA-256 hash-chained per barangay, so editing any historical row breaks the chain. An admin-only verification check detects the break immediately — tampering is provable, not just logged.',
   },
   {
     q: 'How is our data backed up?',
@@ -568,7 +622,9 @@ export default function LandingPage() {
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             {[
               { icon: ShieldCheck, label: 'Server-Enforced RBAC' },
-              { icon: Lock, label: 'Data Privacy Act–Aligned' },
+              { icon: Fingerprint, label: 'MFA · TOTP + WebAuthn' },
+              { icon: KeyRound, label: 'Rate-Limited API Gateway (Kong)' },
+              { icon: Lock, label: 'SHA-256 Tamper-Evident Audit Logs' },
               { icon: Building2, label: 'Multi-Tenant Isolation, Test-Verified' },
               { icon: WifiOff, label: 'Offline-First Architecture' },
               { icon: Code2, label: 'Open Source · MIT' },
@@ -752,11 +808,16 @@ export default function LandingPage() {
               </p>
               <ul className="mt-8 space-y-4">
                 {[
-                  'Admin, Staff, and Viewer roles with server-enforced permissions',
+                  'Admin, Staff, and Viewer roles enforced at the database layer via row-level security — not just hidden UI',
+                  'Multi-factor authentication: TOTP and WebAuthn/passkeys on every account',
+                  'Content Security Policy, PKCE session flow, and refresh-token rotation',
+                  'API gateway rate-limiting on login and write-heavy endpoints to blunt automated abuse',
+                  'SHA-256 hash-chained audit logs for records, finance, and system activity — tamper-evident, with an admin-only chain-verification check',
+                  'Fail-secure error handling — internal failures never leak system details to a client',
+                  'Sensitive-field masking: redacted-by-default in logs and exports, with an audited admin-only opt-in',
                   'Multi-tenant data isolation, verified by an automated test suite',
-                  'Dedicated audit trail for records, finance, and system activity',
+                  'Continuous, near-real-time database backups to secure S3-compatible storage',
                   'Published Privacy Notice, Terms of Use, and Data Processing Agreement',
-                  'Continuous, near-real-time database backups to secure storage',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3 font-display text-sm text-foreground">
                     <ShieldCheck className="mt-0.5 size-4.5 shrink-0 text-mint-deep dark:text-mint" />
@@ -764,6 +825,15 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
+              <a
+                href={`${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 inline-flex items-center gap-1.5 font-display text-sm font-semibold text-mint-deep underline decoration-transparent transition-colors hover:decoration-current dark:text-mint"
+              >
+                See the full compliance mapping
+                <ArrowRight className="size-3.5" />
+              </a>
             </Reveal>
 
             <Reveal delay={0.1}>
@@ -783,7 +853,7 @@ export default function LandingPage() {
                   automatically once you're back online.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-2">
-                  {['React 19', 'TypeScript', 'PocketBase', 'Docker'].map((tag) => (
+                  {['React 19', 'TypeScript', 'Supabase', 'Kong', 'Docker'].map((tag) => (
                     <span
                       key={tag}
                       className="rounded-full border border-white/15 bg-white/5 px-3 py-1 font-display text-xs font-medium text-white/80"
@@ -795,6 +865,38 @@ export default function LandingPage() {
               </div>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ── Integrations ── */}
+      <section id="integrations" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+            Under the Hood
+          </p>
+          <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            Real Integrations, Not Vaporware
+          </h2>
+          <p className="mt-4 font-display text-base text-muted-foreground">
+            Every integration below ships in the codebase today — inspect it, self-host it, or
+            verify it yourself in the public repository.
+          </p>
+        </Reveal>
+
+        <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {integrations.map(({ icon: Icon, title, description }, i) => (
+            <Reveal key={title} delay={(i % 3) * 0.08}>
+              <div className="h-full rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="inline-flex size-11 items-center justify-center rounded-xl bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+                  <Icon className="size-5" />
+                </div>
+                <h3 className="mt-4 font-display text-base font-semibold text-foreground">{title}</h3>
+                <p className="mt-2 font-display text-sm leading-relaxed text-muted-foreground">
+                  {description}
+                </p>
+              </div>
+            </Reveal>
+          ))}
         </div>
       </section>
 
