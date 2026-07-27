@@ -202,7 +202,7 @@ export default function Sidebar({ pinned, onTogglePin, mobileOpen, onMobileOpenC
   function confirmLogout() {
     logout()
     setShowLogoutConfirm(false)
-    navigate('/login')
+    navigate('/')
   }
 
   function isActive(path: string) {
