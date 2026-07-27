@@ -98,13 +98,21 @@ export async function verifyAuth(): Promise<boolean> {
     }
   }
 
-  const { data, error } = await getSupabase().auth.getSession()
-  if (error || !data.session) {
+  try {
+    const { data, error } = await getSupabase().auth.getSession()
+    if (error || !data.session) {
+      cachedUser = null
+      return false
+    }
+    cachedUser = userFromSupabaseUser(data.session.user)
+    return true
+  } catch {
+    // Same reasoning as initAuthSession() above — getSupabase() throws
+    // synchronously when no real backend is configured, which must not
+    // leave RootGate's "loading" state stuck forever (see routes/index.tsx).
     cachedUser = null
     return false
   }
-  cachedUser = userFromSupabaseUser(data.session.user)
-  return true
 }
 
 export function hasRole(...roles: Role[]): boolean {
