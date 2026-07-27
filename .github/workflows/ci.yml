@@ -27,13 +27,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
 
@@ -43,13 +39,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
 
@@ -59,13 +51,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm test
       - name: Upload coverage
@@ -82,13 +70,9 @@ jobs:
     needs: [lint, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
       - uses: actions/upload-artifact@v7
@@ -104,13 +88,9 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref_name == 'main'
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: npm audit
         run: npm audit --audit-level=high
@@ -123,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Trivy filesystem scan (dependencies + secrets)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -131,7 +111,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
       - name: Trivy config scan (Dockerfiles, docker-compose)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -148,8 +128,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Generate SBOM (CycloneDX)
         run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.json
