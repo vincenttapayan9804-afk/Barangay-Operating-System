@@ -44,7 +44,7 @@ export default function Layout() {
   function handleExitDemo() {
     exitDemoMode()
     logout()
-    navigate('/login')
+    navigate('/')
   }
 
   return (
