@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { motion, AnimatePresence, useMotionValue, useTransform, useScroll } from 'framer-motion'
 import {
@@ -47,12 +47,30 @@ const navLinks = [
 ]
 
 const capabilities = [
-  'Server-Enforced RBAC (RLS)',
-  'MFA · TOTP + WebAuthn',
-  'Tamper-Evident Audit Trail',
-  'Offline-First Sync',
-  'Installable PWA',
-  'Dedicated Onboarding & Support',
+  {
+    label: 'Server-Enforced RBAC (RLS)',
+    benefit: 'You get permissions checked by the database itself, not just hidden buttons — a viewer account can never sneak into an admin action, even by calling the API directly.',
+  },
+  {
+    label: 'MFA · TOTP + WebAuthn',
+    benefit: 'You can lock your account down with an authenticator app or a fingerprint/passkey, so a stolen password alone is never enough to get in.',
+  },
+  {
+    label: 'Tamper-Evident Audit Trail',
+    benefit: "You get a history that's cryptographically sealed — if anyone tries to quietly edit a past record, you'll know immediately.",
+  },
+  {
+    label: 'Offline-First Sync',
+    benefit: "You keep working through an internet outage — everything you enter is saved on your device and syncs automatically the moment you're back online.",
+  },
+  {
+    label: 'Installable PWA',
+    benefit: 'You can install CLUSTR straight to your desktop or phone like a native app — no app store, no hunting for a browser tab.',
+  },
+  {
+    label: 'Dedicated Onboarding & Support',
+    benefit: "You're never on your own — a support team sets up your barangay's workspace and is on hand whenever you need help.",
+  },
 ]
 
 const features = [
@@ -477,6 +495,66 @@ function Reveal({
   )
 }
 
+function TermReveal({
+  benefit,
+  children,
+  tone = 'light',
+}: {
+  benefit: string
+  children: React.ReactNode
+  tone?: 'light' | 'dark'
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handlePointerDown(e: PointerEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [open])
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative inline-block"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        aria-expanded={open}
+        className={`cursor-help rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+          tone === 'dark' ? 'focus-visible:ring-mint focus-visible:ring-offset-ink' : 'focus-visible:ring-mint-deep focus-visible:ring-offset-background'
+        }`}
+      >
+        {children}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.96 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            role="tooltip"
+            className="absolute left-1/2 top-full z-30 mt-2 w-60 max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-xl border border-border bg-card px-4 py-3 text-left font-display text-xs leading-relaxed text-foreground shadow-xl"
+          >
+            {benefit}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 function FaqItem({ q, a, isOpen, onToggle }: { q: string; a: string; isOpen: boolean; onToggle: () => void }) {
   return (
     <div className="border-b border-border">
@@ -585,14 +663,17 @@ export default function LandingPage() {
             <div className="mt-14 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
               {capabilities.map((c, i) => (
                 <motion.div
-                  key={c}
+                  key={c.label}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.4, delay: 0.4 + i * 0.05 }}
-                  className="flex items-center gap-2 font-display text-sm text-white/70"
                 >
-                  <CheckCircle2 className="size-4 shrink-0 text-mint" />
-                  <span>{c}</span>
+                  <TermReveal benefit={c.benefit} tone="dark">
+                    <div className="flex items-center gap-2 font-display text-sm text-white/70">
+                      <CheckCircle2 className="size-4 shrink-0 text-mint" />
+                      <span>{c.label}</span>
+                    </div>
+                  </TermReveal>
                 </motion.div>
               ))}
             </div>
@@ -620,18 +701,20 @@ export default function LandingPage() {
           </Reveal>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             {[
-              { icon: ShieldCheck, label: 'Server-Enforced RBAC' },
-              { icon: Fingerprint, label: 'MFA · TOTP + WebAuthn' },
-              { icon: KeyRound, label: 'Rate-Limited API Gateway (Kong)' },
-              { icon: Lock, label: 'SHA-256 Tamper-Evident Audit Logs' },
-              { icon: Building2, label: 'Multi-Tenant Isolation, Test-Verified' },
-              { icon: WifiOff, label: 'Offline-First Architecture' },
+              { icon: ShieldCheck, label: 'Server-Enforced RBAC', benefit: "You can trust that every permission check happens on the server, every time — never just hidden in the interface." },
+              { icon: Fingerprint, label: 'MFA · TOTP + WebAuthn', benefit: 'You add a second proof it\'s really you — an authenticator code or a fingerprint/passkey — before anyone can sign in.' },
+              { icon: KeyRound, label: 'Rate-Limited API Gateway (Kong)', benefit: "You're protected from automated password-guessing — rapid-fire login attempts get slowed down or blocked automatically." },
+              { icon: Lock, label: 'SHA-256 Tamper-Evident Audit Logs', benefit: 'You get proof, not just promises — if any historical log entry is altered, the system detects it instantly.' },
+              { icon: Building2, label: 'Multi-Tenant Isolation, Test-Verified', benefit: "You never see another barangay's data, and they never see yours — enforced at the database level and checked by automated tests on every release." },
+              { icon: WifiOff, label: 'Offline-First Architecture', benefit: "You keep working through spotty internet — records save locally and catch up automatically once you're connected again." },
             ].map((badge, i) => (
               <Reveal key={badge.label} delay={i * 0.05}>
-                <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-display text-xs font-medium text-foreground shadow-sm">
-                  <badge.icon className="size-3.5 text-mint" />
-                  {badge.label}
-                </div>
+                <TermReveal benefit={badge.benefit}>
+                  <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-display text-xs font-medium text-foreground shadow-sm">
+                    <badge.icon className="size-3.5 text-mint" />
+                    {badge.label}
+                  </div>
+                </TermReveal>
               </Reveal>
             ))}
           </div>
