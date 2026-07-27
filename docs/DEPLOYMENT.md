@@ -254,11 +254,14 @@ Create `frontend/.env.production` (gitignored, stays on the server):
 VITE_API_URL=https://records.barangay.gov.ph
 VITE_LOCAL_API_URL=http://192.168.1.100:8080
 VITE_SUPABASE_ANON_KEY=<the ANON_KEY from backend/supabase/.env>
-VITE_CLOUDINARY_CLOUD_NAME=
-VITE_CLOUDINARY_UPLOAD_PRESET=
 ```
 
 Replace `192.168.1.100` with the server's actual static LAN IP.
+
+For image uploads (asset photos), set `CLOUDINARY_CLOUD_NAME`/`CLOUDINARY_API_KEY`/
+`CLOUDINARY_API_SECRET` in `backend/supabase/.env` instead (Security Phase 3 moved this
+server-side — see `backend/supabase/functions/.env.example`); there is nothing Cloudinary-related
+to set in the frontend's own env file anymore.
 
 > **Important:** `VITE_API_URL` is the tunnel URL (HTTPS) so remote users get a secure connection. `VITE_LOCAL_API_URL` is the LAN IP so local users avoid tunnel latency. The app's smart URL resolver automatically selects the right one — see `docs/ARCHITECTURE.md` "Smart URL Resolution." Both point at this same nginx (the SPA host), not directly at Kong — nginx proxies `/rest/v1`, `/auth/v1`, `/realtime/v1`, `/functions/v1` through to Kong itself (see `frontend/nginx.conf`), so the frontend only ever needs one origin.
 

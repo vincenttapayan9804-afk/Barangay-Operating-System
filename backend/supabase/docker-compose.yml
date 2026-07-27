@@ -233,6 +233,13 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-CLUSTR}
       MEILI_URL: http://meilisearch:7700
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+      # sign-cloudinary-upload function secrets (Security Phase 3). Only
+      # the API secret is actually sensitive; see that function's own
+      # comment for why cloud name/api key are safe to hand back to the
+      # frontend in the signed response.
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
     volumes:
       - ./functions:/home/deno/functions:ro
     command: ["start", "--main-service", "/home/deno/functions/main"]
@@ -255,7 +262,10 @@ services:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      # rate-limiting added for Security Phase 3 — anti-brute-force on
+      # /auth/v1/* and anti-automation on write methods (see kong.yml's own
+      # comments for the limit_by: ip rationale and per-route thresholds).
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,rate-limiting
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
     volumes:
@@ -415,8 +425,6 @@ services:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
         VITE_LOCAL_API_URL: ${VITE_LOCAL_API_URL:-}
         VITE_SUPABASE_ANON_KEY: ${ANON_KEY:-}
-        VITE_CLOUDINARY_CLOUD_NAME: ${VITE_CLOUDINARY_CLOUD_NAME:-}
-        VITE_CLOUDINARY_UPLOAD_PRESET: ${VITE_CLOUDINARY_UPLOAD_PRESET:-}
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
     container_name: barangay-frontend

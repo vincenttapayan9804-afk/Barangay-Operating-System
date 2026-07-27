@@ -29,8 +29,6 @@ Create `frontend/.env.local` with the following:
 VITE_API_URL=http://localhost:8000
 VITE_SUPABASE_ANON_KEY=
 VITE_LOCAL_API_URL=
-VITE_CLOUDINARY_CLOUD_NAME=
-VITE_CLOUDINARY_UPLOAD_PRESET=
 ```
 
 | Variable | Required | Default | Description |
@@ -38,8 +36,12 @@ VITE_CLOUDINARY_UPLOAD_PRESET=
 | `VITE_API_URL` | **Yes** (real backend only) | — | Kong gateway URL. In dev: `http://localhost:8000`. In production: the Cloudflare Tunnel URL. |
 | `VITE_SUPABASE_ANON_KEY` | **Yes** (real backend only) | — | The `ANON_KEY` printed by `node backend/scripts/generate-supabase-keys.mjs`. |
 | `VITE_LOCAL_API_URL` | No | — | LAN IP for local network access in production (e.g., `http://192.168.1.100:8080`). Leave empty in dev. |
-| `VITE_CLOUDINARY_CLOUD_NAME` | No | — | Cloudinary cloud name for image uploads. Leave empty if not using image upload. |
-| `VITE_CLOUDINARY_UPLOAD_PRESET` | No | — | Cloudinary unsigned upload preset. Leave empty if not using image upload. |
+
+Image uploads (asset photos) go through Cloudinary's *signed* upload API as of Security Phase 3 —
+configuration is server-side only now (`CLOUDINARY_CLOUD_NAME`/`CLOUDINARY_API_KEY`/
+`CLOUDINARY_API_SECRET` in `backend/supabase/functions/.env.example`, read by the
+`sign-cloudinary-upload` Edge Function). There is nothing to set in the frontend's own `.env.local`
+for this.
 
 > **Note:** `*.local` files are gitignored and never committed. None of the above is needed for demo mode — see below.
 
