@@ -62,5 +62,4 @@ backend/certs/
 
 # Claude Code
 .claude/
-package-lock.json
 
