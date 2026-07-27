@@ -43,6 +43,8 @@ import {
   generateMigrantsCsv,
   downloadCsv,
 } from '@/lib/bims-csv-export'
+import { householdSchema } from '@/lib/schemas/household'
+import { zodFieldErrors } from '@/lib/schemas/util'
 
 /* ------------------------------------------------------------------ */
 /*  Order-listing sort (PSA household member ordering)                 */
@@ -201,24 +203,14 @@ export default function HouseholdsPage() {
   }
 
   function validate(): string | null {
-    const errors: Record<string, string> = {}
-
-    if (!form.region.trim()) errors.region = 'Region is required'
-    if (!form.province.trim()) errors.province = 'Province is required'
-    if (!form.city_municipality.trim()) errors.city_municipality = 'City/Municipality is required'
-    if (!form.barangay.trim()) errors.barangay = 'Barangay is required'
-    if (!form.household_complete_address.trim()) errors.household_complete_address = 'Complete address is required'
-    if (!form.household_type) errors.household_type = 'Household type is required'
-    if (form.household_type === 'Others' && !form.household_type_other.trim()) errors.household_type_other = 'Please specify household type'
-    if (!form.tenure_status) errors.tenure_status = 'Tenure status is required'
-    if (form.tenure_status === 'Others' && !form.tenure_status_other.trim()) errors.tenure_status_other = 'Please specify tenure status'
-    if (!form.household_unit) errors.household_unit = 'Household unit is required'
-    if (form.household_unit === 'Others' && !form.household_unit_other.trim()) errors.household_unit_other = 'Please specify household unit'
-    if (form.no_of_families < 0) errors.no_of_families = 'Must be 0 or more'
-
+    const result = householdSchema.safeParse(form)
+    if (result.success) {
+      setFieldErrors({})
+      return null
+    }
+    const errors = zodFieldErrors(result)
     setFieldErrors(errors)
-    const keys = Object.keys(errors)
-    return keys.length > 0 ? `Please fix ${keys.length} field(s) before saving.` : null
+    return `Please fix ${Object.keys(errors).length} field(s) before saving.`
   }
 
   // ── Lookups ──────────────────────────────────────────────────────

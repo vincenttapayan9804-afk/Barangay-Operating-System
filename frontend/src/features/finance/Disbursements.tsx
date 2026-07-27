@@ -12,6 +12,8 @@ import { getDisbursements, createDisbursement, deleteDisbursement, type ApiDisbu
 import { getAppropriations, type ApiAppropriation } from '@/api/appropriations'
 import { ExportDialog } from '@/components/finance/ExportDialog'
 import { getCurrentUser } from '@/auth/session'
+import { disbursementSchema } from '@/lib/schemas/disbursement'
+import { firstZodError } from '@/lib/schemas/util'
 
 export function Disbursements() {
   const today = () => new Date().toISOString().split('T')[0]
@@ -24,6 +26,7 @@ export function Disbursements() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showExport, setShowExport] = useState(false)
   const [form, setForm] = useState<DisbursementData>({ appropriation: '', payee: '', disbursement_date: today(), amount: 0, check_no: '', or_no: '', particular: '' })
+  const [formError, setFormError] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -41,12 +44,20 @@ export function Disbursements() {
   useEffect(() => { load() }, [])
 
   async function handleSave() {
+    const validation = disbursementSchema.safeParse(form)
+    if (!validation.success) {
+      setFormError(firstZodError(validation))
+      return
+    }
     try {
       await createDisbursement(form)
       setShowForm(false)
+      setFormError(null)
       setForm({ appropriation: '', payee: '', disbursement_date: today(), amount: 0, check_no: '', or_no: '', particular: '' })
       load()
-    } catch (_) {}
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save disbursement')
+    }
   }
 
   async function handleDelete() {
@@ -81,7 +92,7 @@ export function Disbursements() {
           <Download className="size-3" /> Export
         </Button>
       )}
-      <Button variant="ghost" size="sm" className="gap-0.5 rounded-md text-blue-400 hover:text-blue-300 h-6 text-xs" onClick={() => setShowForm(true)}>
+      <Button variant="ghost" size="sm" className="gap-0.5 rounded-md text-blue-400 hover:text-blue-300 h-6 text-xs" onClick={() => { setFormError(null); setShowForm(true) }}>
         <Plus className="size-3" />
         Record
       </Button>
@@ -154,6 +165,11 @@ export function Disbursements() {
           <div className="relative w-full bg-card shadow-xl motion-slide-up motion-fade-in overflow-y-auto md:w-1/2 md:border-l md:border-border max-md:max-h-[85vh] max-md:rounded-t-2xl font-display">
             <div className="p-6">
               <h2 className="font-display text-sm font-semibold mb-4">Record Disbursement</h2>
+              {formError && (
+                <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {formError}
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <Label>Appropriation</Label>
@@ -196,7 +212,7 @@ export function Disbursements() {
               </div>
               <div className="flex gap-2 mt-6">
                 <Button onClick={handleSave}>Create</Button>
-                <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => { setFormError(null); setShowForm(false) }}>Cancel</Button>
               </div>
             </div>
           </div>

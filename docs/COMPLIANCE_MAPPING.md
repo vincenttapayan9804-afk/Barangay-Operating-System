@@ -14,10 +14,10 @@ evidence, not self-certify.
 
 | Control area | Status | Where |
 |---|---|---|
-| Browser security headers | 🔜 Phase 2 (CSP) — X-Frame-Options/HSTS/nosniff/Referrer-Policy/Permissions-Policy already ✅ | `frontend/nginx.conf` |
-| Allow-list input validation | 🔜 Phase 2 (zod on high-risk forms) | `frontend/src/features/*` |
-| Secure session token handling | 🔜 Phase 2 (PKCE, refresh rotation, shorter TTL) | `frontend/src/lib/supabaseClient.ts` |
-| Production code sanitization | 🔜 Phase 2 (strip sourcemaps/console in prod build) | `frontend/vite.config.ts` |
+| Browser security headers | ✅ Phase 2 — CSP added alongside the existing X-Frame-Options/HSTS/nosniff/Referrer-Policy/Permissions-Policy | `frontend/nginx.conf` |
+| Allow-list input validation | ✅ Phase 2 (zod) on residents/households/disbursements; other forms still hand-rolled | `frontend/src/lib/schemas/*`, `frontend/src/features/*` |
+| Secure session token handling | ✅ Phase 2 — PKCE flow, GoTrue refresh-token rotation, 15-minute access-token TTL | `frontend/src/lib/supabaseClient.ts`, `backend/supabase/docker-compose.yml` |
+| Production code sanitization | ✅ Phase 2 — sourcemaps off, console/debugger stripped from prod bundle, generic top-level error boundary | `frontend/vite.config.ts`, `frontend/src/main.tsx` |
 | Database hardening & parameterized queries | 🔜 Phase 3 (verification pass — PostgREST already parameterizes by construction) | `backend/supabase` |
 | Fail-secure error handling | 🔜 Phase 3 (shared Edge Function error wrapper) | `backend/supabase/functions` |
 | Cryptographic log integrity | 🔜 Phase 3 (hash-chained `activity_logs`/`finance_audit_logs`) | `backend/supabase/migrations` |

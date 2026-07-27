@@ -26,6 +26,8 @@ import { DataTable, type Column } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/ui/empty-state'
 import { computeAge } from '@/lib/age'
 import { formatMobileNumber, formatPhilsysCardNo } from '@/lib/validation'
+import { residentSchema } from '@/lib/schemas/resident'
+import { firstZodError } from '@/lib/schemas/util'
 import { useLookups } from '@/hooks/useLookups'
 
 function statusClass(value: string, type: 'document' | 'blotter' | 'activity'): string {
@@ -369,7 +371,12 @@ export default function ResidentsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.first_name.trim() || !form.last_name.trim()) return
+
+    const validation = residentSchema.safeParse(form)
+    if (!validation.success) {
+      setError(firstZodError(validation))
+      return
+    }
 
     try {
       const payload: Record<string, unknown> = { ...form }

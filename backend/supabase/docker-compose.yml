@@ -92,8 +92,20 @@ services:
       # and the create-barangay-admin Edge Function for in-app onboarding).
       GOTRUE_DISABLE_SIGNUP: "true"
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_JWT_EXP: 3600
+      # Shorter access-token lifetime than the previous 3600s — refresh-token
+      # rotation below (supabase-js's autoRefreshToken already handles this
+      # transparently) means a short TTL costs nothing in UX but shrinks the
+      # window a stolen access token stays valid.
+      GOTRUE_JWT_EXP: 900
       GOTRUE_JWT_AUD: authenticated
+      # Each refresh issues a new refresh token and revokes the old one; a
+      # captured refresh token being reused after the legitimate client
+      # already rotated it is treated as reuse of a revoked token (caught,
+      # not silently allowed) outside the short grace window below, which
+      # only exists to tolerate races from a client retrying a dropped
+      # response.
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: "true"
+      GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL: 10
       GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED: "true"
       GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI: pg-functions://postgres/public/custom_access_token_hook
       # TOTP authenticator-app MFA (Hard Part #2's decision). GoTrue issues
