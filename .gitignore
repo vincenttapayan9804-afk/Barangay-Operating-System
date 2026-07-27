@@ -18,6 +18,7 @@ frontend/dist-ssr
 
 # Environment
 *.local
+.env
 .env.local
 .env.production
 
@@ -38,14 +39,6 @@ Desktop.ini
 # Test coverage
 coverage/
 
-# PocketBase
-backend/pb_data/
-backend/pocketbase-service.exe
-backend/pocketbase-service.xml
-
-# Runtime output
-pb_err.txt
-pb_out.txt
 
 # AI agent / tooling artifacts
 .superpowers/

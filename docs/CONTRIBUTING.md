@@ -117,7 +117,7 @@ We use [conventional commits](https://www.conventionalcommits.org/) for clear, m
 
 ```
 frontend/
-  src/api/          API client modules (one per PocketBase collection)
+  src/api/          API client modules (real backend via @supabase/supabase-js, demo-mode branch via mockPocketBase.ts)
   src/auth/         Authentication and authorization
   src/components/   Shared UI components
   src/features/     Feature-specific modules (one per domain)
@@ -126,18 +126,19 @@ frontend/
   src/pages/        Page-level components
   src/routes/       Route definitions
 backend/
-  pb_migrations/    Database schema + RBAC migrations
-  Dockerfile        Alpine + PocketBase binary
-  docker-compose.yml Production stack configuration
+  supabase/         Postgres, GoTrue, PostgREST, Realtime, Edge Functions, Kong
+    migrations/     SQL schema + Row-Level Security policies
+    functions/      Edge Functions (Deno)
+    docker-compose.yml Production stack configuration
 docs/               Documentation
 scripts/            Deploy and utility scripts
 ```
 
 ## Development Tips
 
-- **Frontend only**: You can develop the frontend UI without running PocketBase — API calls will fail gracefully and offline mode will queue them.
-- **Migrations**: PocketBase runs all migration files in `backend/pb_migrations/` in filename order on startup. Prefix with timestamps for ordering: `1783413074_collections_snapshot.js`.
-- **Database reset**: Delete the `backend/pb_data/` directory and restart PocketBase to start fresh.
+- **Frontend only**: You don't need the real backend running at all to work on UI — demo mode (click "Try instantly" on the login page) runs entirely in the browser and covers most feature work.
+- **Migrations**: Postgres applies every `*.sql` file in `backend/supabase/migrations/` in filename order on first boot (`docker-entrypoint-initdb.d`). Prefix with a zero-padded sequence number for ordering: `0030_your_change.sql`. Every table uses Row-Level Security, not application-level rule strings — see `backend/supabase/migrations/0000_auth_helpers.sql` for the JWT-claim helpers every policy is built from.
+- **Database reset**: `docker compose down -v` from `backend/supabase/` (removes the `db_data` volume) and `docker compose up -d db` to re-run every migration from scratch.
 
 ## Need Help?
 

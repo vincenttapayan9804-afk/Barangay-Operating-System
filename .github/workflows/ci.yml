@@ -15,11 +15,6 @@ permissions:
 
 env:
   NODE_VERSION: '22'
-  E2E_ADMIN_EMAIL: admin@e2e.local
-  E2E_ADMIN_PASSWORD: E2eAdmin123!
-  E2E_USER_EMAIL: test@barangay.gov.ph
-  E2E_USER_PASSWORD: Test1234!
-  VITE_API_URL: http://127.0.0.1:8090
 
 defaults:
   run:

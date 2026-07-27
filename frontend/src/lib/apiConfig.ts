@@ -1,7 +1,7 @@
 // The primary (tunnel) URL — always available if internet works.
 const PUBLIC_URL = import.meta.env.VITE_API_URL ?? ''
 
-// Optional local LAN address (e.g., http://192.168.0.100:8090).
+// Optional local LAN address (e.g., http://192.168.0.100:8000 — Kong's gateway port).
 // Set VITE_LOCAL_API_URL in .env.production if you want local-lan fallback.
 const LOCAL_URL = import.meta.env.VITE_LOCAL_API_URL ?? ''
 
@@ -22,7 +22,7 @@ export function setFallbackMode(v: boolean): void {
 }
 
 export async function resolveApiUrl(): Promise<string> {
-  // Local dev — use PUBLIC_URL as-is (usually localhost:8090)
+  // Local dev — use PUBLIC_URL as-is (usually localhost:8000, Kong's gateway)
   if (!LOCAL_URL) {
     resolvedUrl = PUBLIC_URL
     return resolvedUrl

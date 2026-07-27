@@ -23,11 +23,11 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // No dev proxy: the app talks to the backend via an absolute URL resolved
+  // by lib/apiConfig.ts's getApiUrl() (VITE_API_URL, Kong's gateway), not a
+  // relative path Vite would need to forward. A `/api`/`/_` proxy to a local
+  // PocketBase instance used to live here — dropped along with PocketBase.
   server: {
     port: 5173,
-    proxy: {
-      '/api': { target: 'http://localhost:8091', changeOrigin: true },
-      '/_':   { target: 'http://localhost:8091', changeOrigin: true },
-    },
   },
 })

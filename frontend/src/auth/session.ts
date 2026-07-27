@@ -38,14 +38,23 @@ function userFromSupabaseUser(user: SupabaseUser | null | undefined): AuthUser |
 /** Hydrates the session cache once at boot. Call and await before rendering routes. */
 export async function initAuthSession(): Promise<void> {
   if (isDemoModeEnabled()) return
-  const supabase = getSupabase()
-  const { data } = await supabase.auth.getSession()
-  cachedUser = userFromSupabaseUser(data.session?.user)
-  if (!listenerAttached) {
-    listenerAttached = true
-    supabase.auth.onAuthStateChange((_event, session) => {
-      cachedUser = userFromSupabaseUser(session?.user)
-    })
+  try {
+    const supabase = getSupabase()
+    const { data } = await supabase.auth.getSession()
+    cachedUser = userFromSupabaseUser(data.session?.user)
+    if (!listenerAttached) {
+      listenerAttached = true
+      supabase.auth.onAuthStateChange((_event, session) => {
+        cachedUser = userFromSupabaseUser(session?.user)
+      })
+    }
+  } catch {
+    // No real backend configured yet (e.g. VITE_API_URL unset) — getSupabase()
+    // throws synchronously in that case (supabase-js validates the URL at
+    // construction time). Nothing to hydrate; the login page's demo-mode
+    // buttons must still work with zero .env, so this can't be a fatal boot
+    // error — App.tsx awaits initAuthSession() before rendering anything.
+    cachedUser = null
   }
 }
 

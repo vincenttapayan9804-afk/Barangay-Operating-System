@@ -1,4 +1,4 @@
-import { ClientResponseError } from 'pocketbase'
+import { DemoResponseError } from './mockPocketBase'
 import { AuthError } from '@supabase/supabase-js'
 import { getSupabase } from '@/lib/supabaseClient'
 
@@ -36,7 +36,7 @@ function isPostgrestError(err: unknown): err is PostgrestLikeError {
 
 export function handleApiError(err: unknown): ApiError {
   // Demo mode (mockPocketBase.ts throws these).
-  if (err instanceof ClientResponseError) {
+  if (err instanceof DemoResponseError) {
     const status = err.status
     let message = err.message ?? 'Unknown API error'
 

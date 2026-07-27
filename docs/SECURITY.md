@@ -39,67 +39,69 @@ We take security vulnerabilities seriously. If you discover a security issue, **
 
 ### Authentication
 
-- **Password-based auth** managed by PocketBase with bcrypt password hashing
-- **Passkeys (WebAuthn)** — optional passwordless sign-in via `backend/webauthn-service/`, a sidecar that owns the attestation/assertion cryptography (PocketBase has no native WebAuthn support) and mints a real session via PocketBase's superuser impersonate API once a ceremony verifies. See `docs/DEPLOYMENT.md` "Passkey sign-in (WebAuthn)".
-- **MFA** — admin accounts require password + emailed one-time code (PocketBase's built-in MFA, `backend/pb_migrations/1785000029_admin_mfa.js`)
-- **Session tokens** stored in PocketBase's `LocalAuthStore` (persisted to `window.localStorage` under key `pocketbase_auth` by default, for session persistence across page loads). Be aware this means tokens are accessible to JavaScript — implement Content Security Policy headers and keep dependencies audited to mitigate XSS risks.
-- **Rate limiting** configurable via PocketBase admin UI or JS hooks to prevent brute-force attacks
-- **Session expiry** — Tokens expire and users are redirected to login automatically
+- **Password-based auth** managed by GoTrue (self-hosted Supabase's auth service) with bcrypt password hashing. No open self-registration — accounts are provisioned only via GoTrue's admin API (`backend/scripts/bootstrap-platform-admin.mjs`, and the `create-barangay-admin` Edge Function backing the in-app staff-onboarding UI).
+- **Passkeys (WebAuthn)** — optional passwordless sign-in via `backend/webauthn-service/`, a sidecar that owns the attestation/assertion cryptography (neither GoTrue nor PostgREST has native WebAuthn support) and mints a real session via GoTrue's admin API once a ceremony verifies. See `docs/DEPLOYMENT.md` "Passkey sign-in (WebAuthn)".
+- **MFA** — `role=admin` accounts always require TOTP authenticator-app MFA before any data access; `role=staff` requires it only when their barangay's own `require_staff_mfa` flag is set. Enforced at the database layer, not just at login — see `app.mfa_satisfied()` in `backend/supabase/migrations/0000_auth_helpers.sql`, which every Row-Level Security policy funnels through.
+- **Session tokens** — a Supabase JWT (access + refresh token pair), managed by `@supabase/supabase-js`'s own storage (`window.localStorage` by default). Be aware this means tokens are accessible to JavaScript — implement Content Security Policy headers and keep dependencies audited to mitigate XSS risks.
+- **Rate limiting** — configurable via GoTrue's own rate-limit environment variables, and via Kong plugins in front of it.
+- **Session expiry** — Access tokens expire (`GOTRUE_JWT_EXP`) and `@supabase/supabase-js` auto-refreshes or redirects to login.
 
 ### Authorization (RBAC)
 
-Three roles with granular collection-level rules enforced **server-side** by PocketBase:
+Three roles, enforced **server-side by Postgres Row-Level Security** — not application code, and not bypassable by any client:
 
 | Role | Scope |
 |------|-------|
-| **Admin** | Full access to all collections and user management |
+| **Admin** | Full access to all tables and user management |
 | **Staff** | Create/update on records, documents, residents; limited delete |
-| **Viewer** | Read-only access to most collections |
+| **Viewer** | Read-only access to most tables |
 
-Server-side rules in PocketBase migration files (`backend/pb_migrations/`) use `@request.auth.role` expressions to enforce access:
+Every tenant-scoped table has RLS policies keyed off JWT claims stamped by a custom access-token hook (`backend/supabase/migrations/0003_custom_access_token_hook.sql`):
 
-```javascript
-// Only admins can delete records
-"deleteRule": "@request.auth.role = \"admin\""
+```sql
+-- Only admins can delete households, and only within their own tenant
+create policy households_delete on public.households for delete
+  using (barangay_id = app.current_barangay_id() and app.current_role() = 'admin');
 ```
 
-> **Important:** Client-side route guards are for UX convenience only. All authorization is enforced server-side by PocketBase's collection rules. Modifying the frontend code cannot bypass access controls.
+> **Important:** Client-side route guards are for UX convenience only. All authorization is enforced server-side by Postgres RLS, with `force row level security` set on every table (so not even the table owner bypasses it). Modifying the frontend code cannot bypass access controls.
 
 ### Network Security
 
 - **Cloudflare Tunnel** — No open inbound ports on the server. An outbound-only connection is established from the server to Cloudflare's edge network.
 - **WAF** — Cloudflare Web Application Firewall protects against common web exploits (SQL injection, XSS, CSRF, etc.)
 - **HTTPS** — All traffic through the tunnel is encrypted with TLS. Non-HTTPS connections are rejected by Cloudflare.
-- **Local Network** — LAN users access the server directly over HTTP. The internal network is assumed to be trusted. PocketBase admin port (8090) should remain LAN-only.
+- **Local Network** — LAN users access the server directly over HTTP. The internal network is assumed to be trusted. Postgres's own port (`54322`) should remain LAN-only — only Kong's gateway port (`8000`) and the frontend need to be reachable at all.
+- **Single public entry point** — Kong is the only way in for `auth`/`rest`/`realtime`/`functions`; every route requires an `apikey` header (anon or service_role) plus, for authenticated routes, a valid JWT.
 
 ### Data Security
 
-- **Database** — SQLite file stored in `backend/pb_data/`, access restricted to the PocketBase process
-- **Backups** — Database backups are encrypted in transit to S3-compatible storage (Cloudflare R2)
-- **Environment Files** — `.env.production` and `.env.local` are gitignored, never committed to version control
+- **Database** — PostgreSQL, access restricted to the containers that need it (`db:5432` is not published beyond `127.0.0.1` in the reference compose file)
+- **Backups** — Continuous WAL archiving + periodic full/incremental backups via pgBackRest, encrypted in transit to S3-compatible storage (see `docs/DEPLOYMENT.md` "Continuous backups (pgBackRest)")
+- **Environment Files** — `.env`, `.env.production`, and `.env.local` are gitignored, never committed to version control
 - **No secrets in code** — API keys, tokens, and passwords are always in environment variables or gitignored files
-- **PB_ENCRYPTION_KEY** — This key encrypts session data and must be kept secret. Generate with `openssl rand -hex 16` and store securely.
+- **JWT_SECRET / SERVICE_ROLE_KEY** — `JWT_SECRET` signs every access token and the long-lived `ANON_KEY`/`SERVICE_ROLE_KEY` pair (`backend/scripts/generate-supabase-keys.mjs`). `SERVICE_ROLE_KEY` bypasses Row-Level Security entirely and must never reach the frontend — it's used only by Edge Functions and operator scripts.
 
 ### Frontend Security
 
-- **Input validation** — Client-side validation before sending data to the API (first line of defense; server-side validation in PocketBase is the authoritative check)
+- **Input validation** — Client-side validation before sending data to the API (first line of defense; Postgres constraints + RLS are the authoritative check)
 - **Error handling** — Generic error messages prevent information leakage about system internals
 - **Content Security** — Vite builds with proper Content-Type headers and cache-control directives
 - **Dependency auditing** — `npm audit` runs in CI to detect known vulnerabilities in dependencies
 
 ## Best Practices for Deployment
 
-1. **Use HTTPS only** — Always access the app through the Cloudflare Tunnel (HTTPS). Do not expose PocketBase directly to the internet.
+1. **Use HTTPS only** — Always access the app through the Cloudflare Tunnel (HTTPS). Do not expose Postgres or the internal `auth`/`rest` ports directly to the internet — only Kong's gateway and the frontend.
 
-2. **Strong admin passwords** — Use unique, complex passwords for the PocketBase admin account. Consider a password manager.
+2. **Strong admin passwords** — Use unique, complex passwords for platform admin accounts, and always enroll TOTP MFA (required for `role=admin` regardless).
 
-3. **Regular updates** — Keep PocketBase binaries updated to the latest version. Check [PocketBase releases](https://github.com/pocketbase/pocketbase/releases) periodically.
+3. **Regular updates** — Keep the pinned image versions in `backend/supabase/docker-compose.yml` (Postgres, GoTrue, PostgREST, Realtime, Kong, edge-runtime) updated. Check each project's releases periodically.
 
-4. **Review user accounts** — Periodically audit user accounts. Remove inactive or unnecessary accounts.
+4. **Review user accounts** — Periodically audit accounts via GoTrue's admin API. Remove inactive or unnecessary accounts.
 
-5. **Database backups** — Enable automatic backups in PocketBase Admin UI and verify backup files appear in your storage bucket.
+5. **Database backups** — Verify pgBackRest backups are actually landing in your storage bucket (`pgbackrest info`), not just that the service is running.
 
-6. **Monitor logs** — Check PocketBase logs regularly for unusual activity (failed login attempts, unauthorized access patterns, etc.).
+6. **Monitor logs** — Check `docker compose logs` for each service regularly for unusual activity (failed login attempts, unauthorized access patterns, etc.).
 
 7. **Review audit trail** — The finance module has a dedicated audit log (`finance_audit_logs`) that records every financial create/update/delete operation with user attribution. Review it periodically for unauthorized changes.
 

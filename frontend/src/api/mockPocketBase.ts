@@ -1,13 +1,32 @@
-// A minimal, in-browser stand-in for the PocketBase JS SDK client, used only
-// when demo mode is active (see lib/demoAccounts.ts). It implements the
-// subset of the real `PocketBase` client surface this app actually calls —
+// A minimal, in-browser stand-in for a record-store client, used only when
+// demo mode is active (see lib/demoAccounts.ts). It implements the small
 // collection()/getList/getFullList/getOne/getFirstListItem/create/update/
-// delete, filter(), and users' authWithPassword/authRefresh — backed by
-// plain arrays persisted to localStorage instead of HTTP requests. This lets
-// every existing api/*.ts helper run completely unmodified against fake
-// data, entirely offline, with no server anywhere.
-import { ClientResponseError } from 'pocketbase'
+// delete/filter() surface every api/*.ts helper's demo-mode branch calls,
+// backed by plain arrays persisted to localStorage instead of HTTP requests.
+// This lets every existing api/*.ts helper run completely unmodified against
+// fake data, entirely offline, with no server anywhere.
+//
+// DemoResponseError below used to be PocketBase SDK's own `ClientResponseError`
+// (this file's original shape, from before the Supabase migration) — kept as
+// a same-shape local class (status/response/data) so errorHandler.ts's demo
+// branch didn't need to change, without keeping a runtime dependency on the
+// `pocketbase` npm package now that nothing else in the app talks to a real
+// PocketBase server.
 import { DEMO_BARANGAY_ID } from '@/lib/demoAccounts'
+
+export class DemoResponseError extends Error {
+  status: number
+  response: { message?: string; data?: Record<string, unknown> }
+  data: { message?: string; data?: Record<string, unknown> }
+
+  constructor(config: { status: number; response: { message?: string; data?: Record<string, unknown> } }) {
+    super(config.response?.message ?? 'An error occurred')
+    this.name = 'DemoResponseError'
+    this.status = config.status
+    this.response = config.response
+    this.data = config.response
+  }
+}
 
 type Rec = Record<string, any>
 type Db = Record<string, Rec[]>
@@ -79,15 +98,15 @@ function nowIso(): string {
 // Errors
 // ---------------------------------------------------------------------------
 
-function notFoundError(): ClientResponseError {
-  return new ClientResponseError({
+function notFoundError(): DemoResponseError {
+  return new DemoResponseError({
     status: 404,
     response: { message: "The requested resource wasn't found.", data: {} },
   })
 }
 
-function authError(message: string): ClientResponseError {
-  return new ClientResponseError({ status: 400, response: { message, data: {} } })
+function authError(message: string): DemoResponseError {
+  return new DemoResponseError({ status: 400, response: { message, data: {} } })
 }
 
 // ---------------------------------------------------------------------------

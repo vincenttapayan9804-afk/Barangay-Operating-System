@@ -383,6 +383,7 @@ export default function LoginPage() {
                   <button
                     key={account.role}
                     type="button"
+                    data-testid={`demo-login-${account.role}`}
                     onClick={() => handleDemoLogin(account)}
                     disabled={demoLoading !== null}
                     className="flex w-full items-center gap-3 rounded-xl border border-mint-deep/20 bg-mint-soft/40 px-4 py-3 text-left transition-colors hover:bg-mint-soft disabled:cursor-not-allowed disabled:opacity-60"

@@ -32,9 +32,9 @@ updates:
       typescript:
         patterns:
           - "typescript"
-      pocketbase:
+      supabase:
         patterns:
-          - "pocketbase"
+          - "@supabase/*"
     labels:
       - "dependencies"
       - "npm"

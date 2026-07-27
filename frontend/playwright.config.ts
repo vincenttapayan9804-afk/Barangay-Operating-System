@@ -1,9 +1,4 @@
 import { defineConfig } from '@playwright/test'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const root = path.resolve(__dirname, '..')
 
 export default defineConfig({
   testDir: './e2e',
@@ -22,12 +17,14 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
+  // Demo mode (see e2e/global.setup.ts) needs no backend at all, so there's
+  // no more separate CI-only orchestrator script (scripts/e2e-server.mjs,
+  // removed — it used to start a real PocketBase instance) — just the Vite
+  // dev server, same command everywhere. --port overrides vite.config.ts's
+  // own dev port (5173) to match the baseURL below.
   webServer: [
     {
-      command: process.env.CI
-        ? `node scripts/e2e-server.mjs`
-        : 'npm run dev',
-      cwd: process.env.CI ? root : __dirname,
+      command: 'npx vite --port 8080 --host',
       url: 'http://localhost:8080',
       reuseExistingServer: !process.env.CI,
       timeout: 60000,

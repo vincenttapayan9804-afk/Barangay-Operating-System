@@ -8,7 +8,8 @@
     <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB" alt="React 19"></a>
     <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-6-3178C6" alt="TypeScript 6"></a>
     <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-8-646CFF" alt="Vite 8"></a>
-    <a href="https://pocketbase.io/"><img src="https://img.shields.io/badge/PocketBase-0.39-B8DBE4" alt="PocketBase"></a>
+    <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Supabase-self--hosted-3ECF8E" alt="Self-hosted Supabase"></a>
+    <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-15-336791" alt="PostgreSQL 15"></a>
     <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4" alt="Tailwind CSS 4"></a>
     <br>
     <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-compose-2496ED" alt="Docker"></a>
@@ -86,8 +87,8 @@ BarangayOS is a comprehensive, offline-capable web application purpose-built for
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | [React 19](https://react.dev/), [TypeScript 6](https://www.typescriptlang.org/), [Vite 8](https://vite.dev/), [Tailwind CSS 4](https://tailwindcss.com/), [Lucide Icons](https://lucide.dev/) |
-| **Backend** | [PocketBase](https://pocketbase.io/) 0.39 (Go + embedded SQLite, REST API) |
-| **Auth** | Email/password with role-based authorization (admin/staff/viewer) |
+| **Backend** | Self-hosted [Supabase](https://supabase.com/) — PostgreSQL 15, GoTrue (auth), PostgREST (REST API), Realtime, Edge Functions, Kong (gateway) |
+| **Auth** | Email/password via GoTrue with role-based authorization (admin/staff/viewer), enforced server-side by Postgres Row-Level Security; TOTP MFA and WebAuthn/passkey sign-in |
 | **Data Tables** | [@tanstack/react-table](https://tanstack.com/table) |
 | **Charts** | [Recharts](https://recharts.org/) |
 | **Offline** | IndexedDB via [`idb`](https://github.com/jakearchibald/idb) library |
@@ -102,47 +103,38 @@ BarangayOS is a comprehensive, offline-capable web application purpose-built for
 - Node.js 20+ (required by Vite 8)
 - npm 10+
 - Git
-- PocketBase binary ([download](https://pocketbase.io/docs/))
+- Docker (only if you want the real backend running locally — see below)
 
-### Setup
+### Setup — instant, no backend
+
+The fastest way to explore the app is demo mode: a fully client-side backend
+(localStorage, no server) built into the login page itself.
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/rodneydelacruz/barangayos.git
-cd barangayos
-
-# 2. Install frontend dependencies
-cd frontend && npm install
-
-# 3. Copy the example environment file
-cp .env.local.example .env.local
-
-# 4. Start PocketBase for local testing
-#    (Windows)
-.\backend\pocketbase-service.exe serve --http=127.0.0.1:8090 --dir=pb_data --migrationsDir=backend/pb_migrations
-#    (Linux / macOS)
-# ./pocketbase serve --http=127.0.0.1:8090 --dir=pb_data --migrationsDir=backend/pb_migrations
-
-# 5. Start the Vite dev server (separate terminal)
-cd frontend && npm run dev
+cd barangayos/frontend
+npm install
+npm run dev
 ```
 
-The app runs at **http://localhost:8080** and PocketBase Admin UI at **http://localhost:8090/_/**.
+Open **http://localhost:5173**, and click any of the "Try instantly" demo
+accounts on the login page — no `.env`, no Docker, nothing to configure.
 
-See the [Development Guide](docs/DEVELOPMENT.md) for detailed setup instructions.
+### Setup — with the real backend
 
-### Quick Start with Docker
+The real backend is a self-hosted Supabase stack (Postgres, GoTrue, PostgREST,
+Realtime, Edge Functions, Kong) defined in `backend/supabase/docker-compose.yml`:
 
 ```bash
-# Build the frontend
-cd frontend && npm run build && cd ..
-
-# Start the stack (PocketBase + nginx)
-cd backend
-docker compose up -d --build
+cd backend/supabase
+cp .env.example .env               # fill in POSTGRES_PASSWORD / JWT_SECRET
+node ../scripts/generate-supabase-keys.mjs   # fills in ANON_KEY / SERVICE_ROLE_KEY
+docker compose up -d
+node ../scripts/bootstrap-platform-admin.mjs # creates the first platform admin
 ```
 
-> **Note:** The `pocketbase-service.exe` binary in `backend/` is for local Windows testing only and is gitignored. In production, PocketBase runs inside a Docker container.
+See the [Development Guide](docs/DEVELOPMENT.md) and [Deployment Guide](docs/DEPLOYMENT.md)
+for detailed setup, MFA enrollment, and production deployment instructions.
 
 ## Project Structure
 
@@ -150,7 +142,7 @@ docker compose up -d --build
 barangayos/
 ├── frontend/                  # React SPA
 │   ├── src/                   # Application source
-│   │   ├── api/               # 22 API client modules (one per PocketBase collection)
+│   │   ├── api/               # 26 API client modules (real backend via @supabase/supabase-js, demo-mode branch via mockPocketBase.ts)
 │   │   ├── auth/              # Authentication, session, route guards
 │   │   ├── components/ui/     # 30+ shared UI components
 │   │   ├── features/          # 12 domain feature modules
@@ -159,24 +151,25 @@ barangayos/
 │   │   ├── pages/             # Page-level components
 │   │   └── routes/            # Route definitions
 │   ├── public/                # Static assets (manifest, icons, service worker)
-│   ├── e2e/                   # Playwright E2E tests
+│   ├── e2e/                   # Playwright E2E tests (demo mode — no backend needed)
 │   ├── Dockerfile             # Multi-stage production build
 │   ├── nginx-entrypoint.sh    # Startup that copies placeholder TLS certs
-│   ├── nginx.conf             # Nginx config with API proxy + HTTPS
+│   ├── nginx.conf             # Nginx config, proxies /rest,/auth,/realtime,/functions to Kong
 │   └── package.json           # Frontend dependencies
-├── backend/                   # PocketBase backend
-│   ├── pb_migrations/         # Schema + RBAC migrations
-│   ├── Dockerfile             # Alpine + PocketBase binary
-│   ├── docker-compose.yml     # Production stack (nginx + PocketBase)
-│   └── docker-compose.dev.yml # Development compose (PocketBase only)
+├── backend/                   # Self-hosted Supabase backend
+│   ├── supabase/               # Postgres, GoTrue, PostgREST, Realtime, Edge Functions, Kong
+│   │   ├── migrations/         # SQL schema + Row-Level Security policies
+│   │   ├── functions/          # Edge Functions (Deno)
+│   │   ├── backup/             # pgBackRest continuous-backup config
+│   │   └── docker-compose.yml  # The full stack
+│   ├── scripts/                 # bootstrap-platform-admin.mjs, load-test.mjs, test-tenant-isolation.mjs, ...
+│   └── webauthn-service/        # Passkey/WebAuthn sidecar
 ├── scripts/                   # Deploy and utility scripts
 │   ├── deploy.ps1             # Build frontend
 │   ├── deploy-prod.ps1        # Production deploy from GitHub artifact
-│   ├── e2e-server.mjs         # E2E test server orchestrator
-│   ├── export-data.sh         # Export PocketBase data via API
 │   ├── generate-certs.ps1       # Generate mkcert certs for LAN HTTPS
 │   ├── generate-icons.cjs       # Generate square PWA icons from logo
-│   └── healthcheck.sh         # PocketBase health check
+│   └── healthcheck.sh         # Backend health check (GoTrue)
 ├── docs/                      # Documentation
 │   ├── ARCHITECTURE.md        # System design and data flow
 │   ├── DEVELOPMENT.md         # Local setup and coding standards
@@ -257,7 +250,7 @@ This project is [MIT](LICENSE) licensed — see the [LICENSE](LICENSE) file for 
 ## Acknowledgments
 
 - Built for every Barangay in the Philippines
-- [PocketBase](https://pocketbase.io/) — The lightweight backend that makes this possible
+- [Supabase](https://supabase.com/) — The open-source backend platform this project self-hosts
 - [Cloudflare](https://www.cloudflare.com/) — For their generous free-tier tunnel and R2 services
 - All barangay secretaries and staff who provided invaluable domain expertise
 
