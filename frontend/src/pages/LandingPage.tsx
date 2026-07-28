@@ -34,6 +34,10 @@ import {
   Shield,
   Cloud,
   LayoutGrid,
+  Workflow,
+  EyeOff,
+  Boxes,
+  ClipboardCheck,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ClustrMark } from '@/components/ClustrLogo'
@@ -107,6 +111,30 @@ const complianceStandards = [
     code: 'Essential Eight',
     name: 'ACSC Essential Eight Maturity Model',
     note: 'Used as a mitigation-strategy reference for our own hardening baseline.',
+  },
+  {
+    icon: Workflow,
+    code: 'DICT SDLC',
+    name: 'DICT Secure Software Development Lifecycle',
+    note: 'Security gates mapped across our own build, review, and release pipeline.',
+  },
+  {
+    icon: EyeOff,
+    code: 'NIST Privacy',
+    name: 'NIST Privacy Framework',
+    note: 'Privacy controls mapped alongside our Data Privacy Act (RA 10173) safeguards.',
+  },
+  {
+    icon: Boxes,
+    code: 'OWASP Supply Chain',
+    name: 'Dependency & Supply Chain Security',
+    note: 'SBOM generation and license scanning mapped into every CI build, per OWASP guidance.',
+  },
+  {
+    icon: ClipboardCheck,
+    code: 'UK Cyber Essentials',
+    name: 'NCSC Cyber Essentials Scheme',
+    note: 'Boundary, access, and patching controls mapped against its five core themes.',
   },
 ]
 
@@ -592,6 +620,39 @@ function TermReveal({
   )
 }
 
+function ComplianceBadge({ item }: { item: (typeof complianceStandards)[number] }) {
+  return (
+    <motion.div
+      whileHover={{ y: -6, rotateX: 6, rotateY: -6, scale: 1.03 }}
+      transition={{ type: 'spring', stiffness: 280, damping: 22 }}
+      style={{ transformPerspective: 900 }}
+      className="relative flex w-72 shrink-0 items-start gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-card/90 p-5 shadow-md"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-mint/15 blur-2xl"
+      />
+      <div className="relative inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint to-mint-deep text-ink shadow-elevated">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/50 via-white/10 to-transparent opacity-80"
+        />
+        <item.icon className="relative size-5" strokeWidth={2.25} />
+      </div>
+      <div className="relative">
+        <div className="flex items-center gap-2">
+          <p className="font-display text-sm font-semibold text-foreground">{item.code}</p>
+          <span className="rounded-full border border-mint-deep/30 bg-mint/10 px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-wide text-mint-deep dark:text-mint">
+            Mapped
+          </span>
+        </div>
+        <p className="mt-1 font-display text-xs text-muted-foreground">{item.name}</p>
+        <p className="mt-1.5 font-display text-xs leading-relaxed text-muted-foreground/80">{item.note}</p>
+      </div>
+    </motion.div>
+  )
+}
+
 function ComplianceCarousel({ items }: { items: typeof complianceStandards }) {
   const track = [...items, ...items]
 
@@ -606,28 +667,14 @@ function ComplianceCarousel({ items }: { items: typeof complianceStandards }) {
       </ul>
       <div
         aria-hidden="true"
-        className="group relative overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+        className="group relative overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
       >
-        <div className="flex w-max gap-4 animate-marquee group-hover:[animation-play-state:paused]">
+        <div
+          className="flex w-max gap-5 animate-marquee group-hover:[animation-play-state:paused]"
+          style={{ animationDuration: '48s' }}
+        >
           {track.map((item, i) => (
-            <div
-              key={i}
-              className="flex w-72 shrink-0 items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm"
-            >
-              <div className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                <item.icon className="size-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-display text-sm font-semibold text-foreground">{item.code}</p>
-                  <span className="rounded-full border border-mint-deep/30 bg-mint/10 px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-wide text-mint-deep dark:text-mint">
-                    Mapped
-                  </span>
-                </div>
-                <p className="mt-1 font-display text-xs text-muted-foreground">{item.name}</p>
-                <p className="mt-1.5 font-display text-xs leading-relaxed text-muted-foreground/80">{item.note}</p>
-              </div>
-            </div>
+            <ComplianceBadge key={i} item={item} />
           ))}
         </div>
       </div>
@@ -820,9 +867,10 @@ export default function LandingPage() {
               Measured Against the Frameworks That Matter
             </h2>
             <p className="mt-4 font-display text-base text-muted-foreground">
-              CLUSTR's controls are mapped, documented, and kept current against recognized
-              security and cloud-assurance frameworks — self-assessed in the open, not marketed
-              as a certification we don't hold.
+              From application security and cloud assurance to privacy, secure development, and
+              supply-chain integrity, CLUSTR's controls are mapped, documented, and kept current
+              against nine recognized frameworks — self-assessed in the open, not marketed as
+              certifications we don't hold.
             </p>
           </Reveal>
 
