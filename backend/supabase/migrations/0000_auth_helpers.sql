@@ -25,6 +25,19 @@ create or replace function auth.role() returns text
   language sql stable
   as $$ select nullif(auth.jwt()->>'role','')::text $$;
 
+-- The real GoTrue binary (which we depend on for actual login) also ships
+-- its own migrations that (re)create these same three functions the first
+-- time the `auth` service itself starts up -- as the supabase_auth_admin
+-- role, not postgres/migrate.sh (which is what created them above). Without
+-- this ownership transfer, GoTrue's own `create or replace function
+-- auth.uid()`/`auth.role()`/`auth.jwt()` fails outright with "must be owner
+-- of function", and the auth service never becomes healthy. GoTrue's own
+-- final versions are a compatible superset of these (they also read
+-- request.jwt.claims), so letting it re-create them afterwards is safe.
+alter function auth.jwt() owner to supabase_auth_admin;
+alter function auth.uid() owner to supabase_auth_admin;
+alter function auth.role() owner to supabase_auth_admin;
+
 create schema if not exists app;
 
 create or replace function app.has_aal2() returns boolean
