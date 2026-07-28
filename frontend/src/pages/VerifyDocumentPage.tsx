@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
-import { CheckCircle2, XCircle, FileText, User, Hash, Building2 } from 'lucide-react'
+import { CheckCircle2, XCircle, FileText, User, Hash, Building2, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { getDocumentForVerification, type PublicDocumentVerification } from '@/api/documents'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { Spinner } from '@/components/ui/spinner'
@@ -103,6 +103,19 @@ export default function VerifyDocumentPage() {
                   </div>
                 </div>
               </div>
+
+              {doc.chain_verified === true && (
+                <div className="flex items-center gap-2 rounded-lg border border-teal/30 bg-teal/10 px-3 py-2 text-xs font-medium text-teal">
+                  <ShieldCheck className="size-4 shrink-0" />
+                  Tamper-evident — chain verified
+                </div>
+              )}
+              {doc.chain_verified === false && (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+                  <ShieldAlert className="size-4 shrink-0" />
+                  Tamper check failed — this record no longer matches its recorded release hash
+                </div>
+              )}
             </div>
           )}
         </div>
