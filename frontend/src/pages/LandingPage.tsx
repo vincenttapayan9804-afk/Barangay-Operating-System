@@ -774,6 +774,30 @@ function TermReveal({
   )
 }
 
+function Icon3D({
+  icon: Icon,
+  size = 'size-11',
+  iconSize = 'size-5',
+  className = '',
+}: {
+  icon: typeof ShieldCheck
+  size?: string
+  iconSize?: string
+  className?: string
+}) {
+  return (
+    <div
+      className={`relative inline-flex ${size} shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint to-mint-deep text-ink shadow-elevated ${className}`}
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/50 via-white/10 to-transparent opacity-80"
+      />
+      <Icon className={`relative ${iconSize}`} strokeWidth={2.25} />
+    </div>
+  )
+}
+
 function ComplianceBadge({
   item,
   className = '',
@@ -792,13 +816,7 @@ function ComplianceBadge({
         aria-hidden="true"
         className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-mint/15 blur-2xl"
       />
-      <div className="relative inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint to-mint-deep text-ink shadow-elevated">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/50 via-white/10 to-transparent opacity-80"
-        />
-        <item.icon className="relative size-5" strokeWidth={2.25} />
-      </div>
+      <Icon3D icon={item.icon} size="size-12" iconSize="size-5" />
       <div className="relative">
         <div className="flex items-center gap-2">
           <p className="font-display text-sm font-semibold text-foreground">{item.code}</p>
@@ -1207,8 +1225,8 @@ export default function LandingPage() {
             ].map((badge, i) => (
               <Reveal key={badge.label} delay={i * 0.05}>
                 <TermReveal benefit={badge.benefit}>
-                  <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 font-display text-xs font-medium text-foreground shadow-sm">
-                    <badge.icon className="size-3.5 text-mint" />
+                  <div className="flex items-center gap-2.5 rounded-full border border-border bg-card py-2 pl-2 pr-4 font-display text-xs font-medium text-foreground shadow-sm">
+                    <Icon3D icon={badge.icon} size="size-6" iconSize="size-3" />
                     {badge.label}
                   </div>
                 </TermReveal>
@@ -1231,7 +1249,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
             <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
-              Benchmarked Compliance and Standards Mapping
+              Internationally-Benchmarked Compliance and Standards Mapping
             </p>
             <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Measured Against the Frameworks That Matter
@@ -1291,9 +1309,7 @@ export default function LandingPage() {
             {aboutValues.map(({ icon: Icon, title, description }, i) => (
               <Reveal key={title} delay={i * 0.08}>
                 <div className="h-full rounded-2xl border border-border bg-card p-6 shadow-sm">
-                  <div className="inline-flex size-11 items-center justify-center rounded-xl bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                    <Icon className="size-5" />
-                  </div>
+                  <Icon3D icon={Icon} size="size-11" iconSize="size-5" />
                   <h3 className="mt-4 font-display text-sm font-semibold text-foreground">{title}</h3>
                   <p className="mt-2 font-display text-xs leading-relaxed text-muted-foreground">{description}</p>
                 </div>
@@ -1363,9 +1379,7 @@ export default function LandingPage() {
             <ul className="mt-6 space-y-5">
               {residentTrustItems.map((item) => (
                 <li key={item.title} className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
-                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                    <item.icon className="size-4.5" />
-                  </span>
+                  <Icon3D icon={item.icon} size="size-9" iconSize="size-4.5" className="mt-0.5" />
                   <span>
                     <p className="font-display text-sm font-semibold text-foreground">{item.title}</p>
                     <p className="mt-1 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
@@ -1382,9 +1396,7 @@ export default function LandingPage() {
             <ul className="mt-6 space-y-5">
               {auditorGovernanceItems.map((item) => (
                 <li key={item.title} className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
-                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                    <item.icon className="size-4.5" />
-                  </span>
+                  <Icon3D icon={item.icon} size="size-9" iconSize="size-4.5" className="mt-0.5" />
                   <span>
                     <a
                       href={item.href}
