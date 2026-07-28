@@ -1,0 +1,45 @@
+{
+	# Required for the coraza-caddy module to run before the rest of the
+	# request pipeline (see https://github.com/corazawaf/coraza-caddy).
+	order coraza_waf first
+	# This stack has no public DNS name to request a Let's Encrypt cert
+	# for (LAN/tunnel deployment, self-signed or mkcert certs — same model
+	# frontend/nginx.conf already uses) — disable Caddy's automatic HTTPS
+	# so it doesn't attempt ACME issuance and instead uses the certs
+	# mounted/generated below.
+	auto_https off
+	admin off
+}
+
+# Shared WAF + reverse-proxy pipeline for both the HTTP and HTTPS listeners
+# below. HTTP is intentionally NOT redirected to HTTPS — docs/DEPLOYMENT.md
+# documents plain-HTTP LAN access (no PWA install) as a supported mode
+# alongside HTTPS (mkcert, PWA-installable); frontend/nginx.conf makes the
+# same choice on its own :80 server block.
+(waf_pipeline) {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine On
+		`
+	}
+
+	reverse_proxy frontend:80 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up Host {host}
+	}
+}
+
+:80 {
+	import waf_pipeline
+}
+
+:443 {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/cert-key.pem
+	import waf_pipeline
+}
