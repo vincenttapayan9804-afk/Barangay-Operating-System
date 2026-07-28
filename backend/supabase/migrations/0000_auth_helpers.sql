@@ -5,6 +5,52 @@
 -- Claims are populated by the custom_access_token_hook defined in
 -- 0003_custom_access_token_hook.sql (after profiles/barangays exist).
 
+-- auth.jwt()/auth.uid()/auth.role() are NOT part of the plain
+-- `supabase/postgres` Docker image (only auth.users and the auth-related
+-- roles are) -- they're the standard self-hosted-Supabase DIY helpers that
+-- read the JWT claims PostgREST sets per-request. Defined here, first,
+-- since app.current_barangay_id()/app.current_role() below (and every RLS
+-- policy from 0001 onward) depend on them existing already.
+create schema if not exists auth;
+
+create or replace function auth.jwt() returns jsonb
+  language sql stable
+  as $$ select nullif(current_setting('request.jwt.claims', true), '')::jsonb $$;
+
+create or replace function auth.uid() returns uuid
+  language sql stable
+  as $$ select nullif(auth.jwt()->>'sub','')::uuid $$;
+
+create or replace function auth.role() returns text
+  language sql stable
+  as $$ select nullif(auth.jwt()->>'role','')::text $$;
+
+-- The real GoTrue binary (which we depend on for actual login) also ships
+-- its own migrations that (re)create these same functions the first time
+-- the `auth` service itself starts up -- as the supabase_auth_admin role,
+-- not postgres/migrate.sh (which is what created/owns them here, and
+-- auth.email() too, which the base image's own init-scripts define before
+-- this migration ever runs). Without this ownership transfer, GoTrue's own
+-- `create or replace function auth.uid()`/`auth.role()`/`auth.jwt()`/
+-- `auth.email()` fails outright with "must be owner of function", and the
+-- auth service never becomes healthy. GoTrue's own final versions are a
+-- compatible superset of these (they also read request.jwt.claims), so
+-- letting it re-create them afterwards is safe. Guarded with an existence
+-- check since auth.email() isn't something we define ourselves.
+do $$
+declare
+  fn text;
+begin
+  foreach fn in array array['jwt', 'uid', 'role', 'email'] loop
+    if exists (
+      select 1 from pg_proc
+      where proname = fn and pronamespace = 'auth'::regnamespace
+    ) then
+      execute format('alter function auth.%I() owner to supabase_auth_admin', fn);
+    end if;
+  end loop;
+end $$;
+
 create schema if not exists app;
 
 create or replace function app.has_aal2() returns boolean

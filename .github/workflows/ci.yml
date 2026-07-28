@@ -156,7 +156,7 @@ jobs:
   tenant-isolation:
     name: Tenant Isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend/supabase
@@ -168,7 +168,8 @@ jobs:
       # Real "start Postgres/GoTrue/PostgREST" per the migration plan's
       # Phase 7 scope — no Kong, no realtime/edge-runtime/webauthn/frontend.
       # `db`'s docker-entrypoint-initdb.d applies migrations/*.sql
-      # automatically on first boot (init-migrations.sh), so there is no
+      # automatically on first boot (the image's own bundled entrypoint
+      # script), so there is no
       # separate "apply migrations" step: db reporting healthy already means
       # migrated.
       - name: Generate stack secrets
@@ -188,7 +189,12 @@ jobs:
         run: docker compose up -d --build db auth rest
       - name: Wait for auth + rest to report healthy
         run: |
-          for i in $(seq 1 60); do
+          # GoTrue runs its own ~54-migration chain against db on first
+          # connect (on top of db's own init scripts + our 35 migrations),
+          # which comfortably takes longer than the old 60*2s=120s budget --
+          # confirmed via CI logs showing "GoTrue API started" and PostgREST's
+          # schema cache loading well after that window would have expired.
+          for i in $(seq 1 150); do
             AUTH_STATUS="$(docker inspect --format='{{.State.Health.Status}}' barangay-supabase-auth 2>/dev/null || echo starting)"
             REST_STATUS="$(docker inspect --format='{{.State.Health.Status}}' barangay-supabase-rest 2>/dev/null || echo starting)"
             if [ "$AUTH_STATUS" = "healthy" ] && [ "$REST_STATUS" = "healthy" ]; then

@@ -45,6 +45,16 @@ services:
     # silently break the realtime service's postgres_changes subscriptions.
     command:
       - postgres
+      # supabase/postgres's own default CMD is `postgres -D /etc/postgresql`
+      # -- that config file is what sets listen_addresses (to all
+      # interfaces, not just loopback) and shared_preload_libraries (incl.
+      # pg_stat_statements). Overriding `command:` at all replaces that
+      # default entirely, so -D must be repeated here or db silently falls
+      # back to a bare/vanilla config generated inside $PGDATA: other
+      # containers can never reach it (loopback-only) and
+      # extensions.pg_stat_statements_reset() doesn't exist.
+      - -D
+      - /etc/postgresql
       - -c
       - archive_mode=on
       - -c
@@ -64,11 +74,25 @@ services:
       - "127.0.0.1:54322:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+      # This image's own bundled /docker-entrypoint-initdb.d/migrate.sh
+      # already discovers and applies a mounted migrations/*.sql directory
+      # itself, in filename order, after its own init-scripts (which create
+      # the auth schema and roles our migrations depend on) -- confirmed by
+      # CI actually applying all of 0000-0034 successfully via migrate.sh.
+      # A previous custom wrapper script here duplicated that (and, once
+      # its own ordering bug was fixed, ran a second time after migrate.sh
+      # and fatally re-applied every migration, hitting "relation already
+      # exists"). No wrapper needed at all.
       - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
-      # supabase/postgres only auto-runs *.sql directly inside
-      # docker-entrypoint-initdb.d, not subdirectories — this tiny wrapper
-      # applies migrations/*.sql in filename order on first boot.
-      - ./init-migrations.sh:/docker-entrypoint-initdb.d/00-init-migrations.sh:ro
+      # The base image's own init-scripts (run BY migrate.sh, before it
+      # applies our migrations above) create authenticator/
+      # supabase_auth_admin/supabase_admin/etc. with NO password -- every
+      # service below connects to db using one of these roles with
+      # $POSTGRES_PASSWORD. This must sort after "migrate.sh" at the
+      # top level (hence "zzz-") so those roles already exist when it runs;
+      # otherwise every such connection fails with "password authentication
+      # failed".
+      - ./zzz-role-passwords.sh:/docker-entrypoint-initdb.d/zzz-role-passwords.sh:ro
       - ./backup/pgbackrest.conf:/etc/pgbackrest.conf:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]

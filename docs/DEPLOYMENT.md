@@ -239,7 +239,8 @@ docker compose up -d --build
 This builds and starts all eleven services (see Architecture Overview above). `db` and
 `backup` are built from `db.Dockerfile` (extends the official `supabase/postgres` image
 with the `pgbackrest` binary — see Step 5); everything else pulls a published image.
-First boot applies every file in `migrations/` in order via `init-migrations.sh`.
+First boot applies every file in `migrations/` in order automatically, via the
+`supabase/postgres` image's own bundled entrypoint script (no custom wrapper needed).
 
 #### 2c. Verify
 
