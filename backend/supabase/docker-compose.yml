@@ -67,8 +67,13 @@ services:
       - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
       # supabase/postgres only auto-runs *.sql directly inside
       # docker-entrypoint-initdb.d, not subdirectories — this tiny wrapper
-      # applies migrations/*.sql in filename order on first boot.
-      - ./init-migrations.sh:/docker-entrypoint-initdb.d/00-init-migrations.sh:ro
+      # applies migrations/*.sql in filename order on first boot. Named to
+      # sort (alphabetically -- how Postgres's entrypoint orders this
+      # directory) after the image's own zero-padded-numeric-prefixed init
+      # scripts, which create the auth schema and roles our migrations
+      # depend on; a "00-" prefix here previously sorted before those
+      # ("-" < "0" in ASCII) and ran our migrations too early.
+      - ./zzz-init-migrations.sh:/docker-entrypoint-initdb.d/zzz-init-migrations.sh:ro
       - ./backup/pgbackrest.conf:/etc/pgbackrest.conf:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]

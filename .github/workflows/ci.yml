@@ -168,7 +168,7 @@ jobs:
       # Real "start Postgres/GoTrue/PostgREST" per the migration plan's
       # Phase 7 scope — no Kong, no realtime/edge-runtime/webauthn/frontend.
       # `db`'s docker-entrypoint-initdb.d applies migrations/*.sql
-      # automatically on first boot (init-migrations.sh), so there is no
+      # automatically on first boot (zzz-init-migrations.sh), so there is no
       # separate "apply migrations" step: db reporting healthy already means
       # migrated.
       - name: Generate stack secrets
