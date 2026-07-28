@@ -84,6 +84,13 @@ services:
       # and fatally re-applied every migration, hitting "relation already
       # exists"). No wrapper needed at all.
       - ./migrations:/docker-entrypoint-initdb.d/migrations:ro
+      # The base image's own init-scripts create authenticator/
+      # supabase_auth_admin/supabase_admin/etc. with NO password -- every
+      # service below connects to db using one of these roles with
+      # $POSTGRES_PASSWORD, so this has to run (right after the roles exist,
+      # before migrate.sh) or every such connection fails with "password
+      # authentication failed".
+      - ./00000000000004-role-passwords.sh:/docker-entrypoint-initdb.d/00000000000004-role-passwords.sh:ro
       - ./backup/pgbackrest.conf:/etc/pgbackrest.conf:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
