@@ -81,6 +81,7 @@ create policy households_delete on public.households for delete
 - **Backups** — Continuous WAL archiving + periodic full/incremental backups via pgBackRest, encrypted in transit to S3-compatible storage (see `docs/DEPLOYMENT.md` "Continuous backups (pgBackRest)")
 - **Environment Files** — `.env`, `.env.production`, and `.env.local` are gitignored, never committed to version control
 - **No secrets in code** — API keys, tokens, and passwords are always in environment variables or gitignored files
+- **Secrets management (Infisical, Security Phase 5)** — real secret values (`POSTGRES_PASSWORD`, `JWT_SECRET`, `SERVICE_ROLE_KEY`, and any of Cloudinary/CompreFace's keys) live in self-hosted Infisical (`backend/infisical/`), not hand-edited into a plaintext `.env` on every deployment host. `backend/scripts/render-secrets-from-infisical.mjs` renders `backend/supabase/.env` from it at deploy time via a read-only machine identity; see `docs/DEPLOYMENT.md` "Secrets Management (Infisical)" for setup and rotation policy.
 - **JWT_SECRET / SERVICE_ROLE_KEY** — `JWT_SECRET` signs every access token and the long-lived `ANON_KEY`/`SERVICE_ROLE_KEY` pair (`backend/scripts/generate-supabase-keys.mjs`). `SERVICE_ROLE_KEY` bypasses Row-Level Security entirely and must never reach the frontend — it's used only by Edge Functions and operator scripts.
 
 ### Frontend Security

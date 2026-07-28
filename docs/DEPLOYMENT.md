@@ -199,6 +199,21 @@ Visit `https://records.barangay.gov.ph/` — you should see the app login page.
 
 #### 2a. Generate secrets
 
+**Recommended (Security Phase 5 — Infisical):** stand up self-hosted Infisical once and
+render `backend/supabase/.env` from it instead of hand-editing a file. See "Secrets
+Management (Infisical)" below for the one-time setup, then:
+
+```bash
+INFISICAL_DOMAIN=http://localhost:8060/api \
+INFISICAL_CLIENT_ID=... \
+INFISICAL_CLIENT_SECRET=... \
+INFISICAL_PROJECT_ID=... \
+INFISICAL_ENV=prod \
+  node backend/scripts/render-secrets-from-infisical.mjs
+```
+
+**Manual fallback** (no Infisical instance available yet):
+
 ```bash
 cd backend/supabase
 cp .env.example .env
@@ -221,7 +236,7 @@ cd backend/supabase
 docker compose up -d --build
 ```
 
-This builds and starts all ten services (see Architecture Overview above). `db` and
+This builds and starts all eleven services (see Architecture Overview above). `db` and
 `backup` are built from `db.Dockerfile` (extends the official `supabase/postgres` image
 with the `pgbackrest` binary — see Step 5); everything else pulls a published image.
 First boot applies every file in `migrations/` in order via `init-migrations.sh`.
@@ -256,6 +271,81 @@ This does **not** enroll MFA — `app.mfa_satisfied()` (Row-Level Security) gate
 policy for `role=admin` behind aal2, so the very first login shows zero rows anywhere
 until you complete TOTP enrollment (Settings → the passkey/MFA screen prompts for this on
 first admin login). That's expected, not a bug.
+
+---
+
+## Secrets Management (Infisical)
+
+Security Phase 5 replaces the old "copy `.env.example` to `.env` and hand-fill every
+value" workflow with self-hosted [Infisical](https://infisical.com/), so real secrets
+(JWT signing secret, DB password, service-role key, and any of Cloudinary/CompreFace's
+keys once those are configured) live in one managed store instead of scattered plaintext
+files across every server that runs this stack.
+
+### One-time setup
+
+1. **Stand up Infisical** (a separate compose project from the app stack — see
+   `backend/infisical/docker-compose.yml`'s own header comment for why):
+
+   ```bash
+   cd backend/infisical
+   cp .env.example .env
+   # Fill in ENCRYPTION_KEY, AUTH_SECRET, POSTGRES_PASSWORD — see that file's own
+   # comment for why these three specifically can't themselves be stored in
+   # Infisical, and store them in a password manager or your host's own secret store.
+   docker compose up -d
+   ```
+
+2. **Create a project** at `http://localhost:8060` (or wherever you exposed it — see the
+   compose file's own comment on why it's loopback-only by default) and add an
+   environment (e.g. `prod`).
+
+3. **Import every secret name** from `backend/supabase/.env.example` into that project —
+   the file's own comments document what each one is and how to generate it. This is a
+   one-time manual step; there's no automated importer, since these are exactly the
+   values a human should set deliberately once, not migrate blindly.
+
+4. **Create a machine identity** (Universal Auth) scoped to that project, for
+   `render-secrets-from-infisical.mjs` to authenticate as. Give it read-only access to
+   secrets — it never needs to write.
+
+### Rendering `.env` for a deployment
+
+```bash
+INFISICAL_DOMAIN=http://localhost:8060/api \
+INFISICAL_CLIENT_ID=<machine identity client ID> \
+INFISICAL_CLIENT_SECRET=<machine identity client secret> \
+INFISICAL_PROJECT_ID=<project ID> \
+INFISICAL_ENV=prod \
+  node backend/scripts/render-secrets-from-infisical.mjs
+```
+
+This writes `backend/supabase/.env` from Infisical (never printing a secret value to the
+terminal) and prints the next step (`docker compose up -d --build`, same as before). The
+`.env` file itself is unchanged in shape and still gitignored — Phase 5 changes *how it
+gets populated*, not how `docker-compose.yml` consumes it.
+
+### Rotation policy
+
+Rotate `POSTGRES_PASSWORD` and `JWT_SECRET` at minimum every 90 days, or immediately if
+either is suspected compromised:
+
+1. Update the value in Infisical's UI (or `infisical secrets set`).
+2. Re-run `render-secrets-from-infisical.mjs` to produce a fresh `.env`.
+3. If `JWT_SECRET` changed, also re-run `generate-supabase-keys.mjs` (a new `JWT_SECRET`
+   invalidates the old `ANON_KEY`/`SERVICE_ROLE_KEY`, and every existing user session).
+4. `docker compose up -d --build` to restart affected containers with the new values.
+
+Rotating `JWT_SECRET` is disruptive (every logged-in session is invalidated at once) —
+schedule it as planned maintenance, not silently.
+
+### What Infisical does not remove
+
+Infisical's own bootstrap secrets (`ENCRYPTION_KEY`, `AUTH_SECRET`,
+`backend/infisical/.env`'s `POSTGRES_PASSWORD`) are the one remaining root of trust — a
+secrets manager cannot also manage the credentials that unlock itself. Treat that one
+file with the same care a password manager's own master password gets: on the host
+machine only, backed up securely, never committed.
 
 ---
 

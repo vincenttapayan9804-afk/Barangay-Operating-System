@@ -12,7 +12,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | Blotter/incident records | `blotter_records` | High — often involves minors, victims, ongoing disputes |
 | Finance records (budget, disbursements, revenues) | `fund_sources`, `appropriations`, `disbursements`, `revenues`, `finance_audit_logs` | High — statutory/audit exposure |
 | Credentials & session tokens | GoTrue (`auth.users`), browser localStorage, WebAuthn credentials (`webauthn_credentials`) | Critical |
-| Service secrets (JWT signing key, service-role key, DB password) | `backend/supabase/.env` (Phase 5 moves this into Infisical) | Critical |
+| Service secrets (JWT signing key, service-role key, DB password) | Self-hosted Infisical (`backend/infisical/`), rendered into `backend/supabase/.env` at deploy time (Phase 5) | Critical |
 | Audit trail (`activity_logs`, `finance_audit_logs`) | Postgres | High — must be tamper-evident (Phase 3) |
 | Released documents (clearances, certificates) | Generated PDFs + `document_requests` | Medium — forgeable if verification is weak (Phase 7) |
 
@@ -41,7 +41,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | **R**epudiation | A user denies performing a destructive action | `activity_logs`/`finance_audit_logs` record user attribution | Phase 3 hash-chain strengthens non-repudiation |
 | **I**nformation disclosure | XSS reading the session token out of `localStorage` | HttpOnly not used (SPA + supabase-js default); existing security headers (X-Frame-Options, HSTS, nosniff) | Phase 2 (CSP — the actual mitigation for XSS-based token theft, since a BFF/HttpOnly-cookie model isn't feasible without one) |
 | **I**nformation disclosure | Verbose error messages leaking stack traces / internals | Frontend error boundary, "generic error messages" convention | Phase 3 (shared fail-secure error wrapper for all Edge Functions) |
-| **I**nformation disclosure | Secrets committed to git or leaked via logs | `.env*` gitignored, Trivy secret scan in CI | Phase 5 (Infisical — no plaintext secrets on disk at all) |
+| **I**nformation disclosure | Secrets committed to git or leaked via logs | `.env*` gitignored, Trivy secret scan in CI, Phase 5's self-hosted Infisical (`backend/infisical/`) as the single managed store real secrets are rendered from | Closed — Infisical's own bootstrap secrets (`ENCRYPTION_KEY`/`AUTH_SECRET`/its DB password) remain the one unavoidable root of trust, documented in `docs/DEPLOYMENT.md` |
 | **D**enial of service | Scripted abuse of write-heavy endpoints (mass record creation, finance entry spam) | None at Kong today | Phase 3 (Kong rate-limiting / anti-automation) |
 | **D**enial of service | Generic web attacks (SQLi/XSS scanners, known exploit signatures) | Cloudflare's free-tier WAF, plus Phase 4's self-hosted Coraza/OWASP CRS layer in front of nginx/Kong (`docs/SECURITY.md` "Network Security") | Closed |
 | **E**levation of privilege | A viewer/staff account attempting an admin-only action via direct API call | Server-side RLS on every table, `force row level security` set repo-wide | Phase 3 verifies this repo-wide as part of the DB hardening pass |

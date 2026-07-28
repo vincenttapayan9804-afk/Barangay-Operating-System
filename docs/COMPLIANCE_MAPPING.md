@@ -32,7 +32,7 @@ evidence, not self-certify.
 |---|---|---|
 | **Govern** | ✅ Phase 1 (this doc + threat model formalize policy) | `docs/THREAT_MODEL.md` |
 | **Identify** | ✅ Data classification (Phase 1), asset inventory in threat model | `docs/DATA_CLASSIFICATION.md` |
-| **Protect** | ✅ RLS/RBAC/MFA/backups/rate-limiting/Phase 4 WAF today; 🔜 Phases 5–6 close the remaining gaps | multiple |
+| **Protect** | ✅ RLS/RBAC/MFA/backups/rate-limiting/Phase 4 WAF/Phase 5 secrets management today; 🔜 Phase 6 closes the remaining gap | multiple |
 | **Detect** | ✅ Phase 3 — hash-chained audit logs make tampering detectable, not just logged | `backend/supabase/migrations/0030_audit_log_hash_chain.sql` |
 | **Respond** | ✅ `docs/SECURITY.md` vulnerability-disclosure process | `docs/SECURITY.md` |
 | **Recover** | ✅ pgBackRest continuous backups | `docs/DEPLOYMENT.md` |
@@ -42,7 +42,7 @@ evidence, not self-certify.
 | Control | Status |
 |---|---|
 | CIS 3 — Data Protection | ✅ Phase 1 classification + Phase 3 DLP masking (write-time redaction in `activity_logs`/`finance_audit_logs`, redacted-by-default exports) |
-| CIS 4 — Secure Configuration | ✅ Trivy config scan in CI; 🔜 Phase 5 removes plaintext secrets |
+| CIS 4 — Secure Configuration | ✅ Trivy config scan in CI; ✅ Phase 5 — self-hosted Infisical replaces hand-edited plaintext `.env` files (`backend/infisical/`) |
 | CIS 5 — Account Management | ✅ GoTrue admin-API-only provisioning, no open self-registration |
 | CIS 6 — Access Control Management | ✅ RLS-enforced RBAC |
 | CIS 8 — Audit Log Management | ✅ today, ✅ Phase 3 cryptographic integrity |
