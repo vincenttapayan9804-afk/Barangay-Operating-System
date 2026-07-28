@@ -7,6 +7,16 @@ import { initSentry } from '@/lib/sentry'
 
 initSentry()
 
+// Registering only in production avoids the service worker intercepting
+// Vite's dev-server requests and breaking HMR. This also doubles as one of
+// the browser's PWA installability requirements (a controlling SW with a
+// fetch handler) — see public/sw.js.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
+
 // A render error anywhere in the tree must never fall through to React's
 // default behavior of unmounting to a blank page (dev) or printing a raw
 // component stack (would leak internals in prod if ever surfaced). This
