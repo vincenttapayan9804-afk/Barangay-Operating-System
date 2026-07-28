@@ -1,12 +1,15 @@
--- Verification-harness-ONLY scaffolding. Reimplements the pieces the real
--- `supabase/postgres` Docker image already ships (auth.users table,
--- auth.jwt()/auth.uid()/auth.role(), the anon/authenticated/service_role/
--- supabase_auth_admin roles) so the real Phase 1 migrations in
+-- Verification-harness-ONLY scaffolding. Reimplements the pieces a bare
+-- Postgres instance doesn't have yet when testing outside Docker (the
+-- `supabase/postgres` image itself ships auth.users and the
+-- anon/authenticated/service_role/supabase_auth_admin roles, but not the
+-- auth.jwt()/auth.uid()/auth.role() helper functions -- those are a
+-- standard self-hosted-Supabase DIY step, now defined for real in
+-- migrations/0000_auth_helpers.sql itself so this is redundant but
+-- harmless against a real image) so the real Phase 1 migrations in
 -- backend/supabase/migrations/ can be applied and RLS-tested against bare
 -- Postgres, matching the same approach validated in the Phase 0 spike
 -- (backend/supabase-spike/auth-stubs.sql). NOT part of the real migration
--- set — never apply this file against an actual Supabase instance, which
--- already has all of this and would conflict.
+-- set — never apply this file against an actual Supabase instance.
 
 create extension if not exists pgcrypto;
 create schema if not exists auth;
