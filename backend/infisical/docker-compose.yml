@@ -1,0 +1,97 @@
+# Self-hosted Infisical (Security Phase 5) — the secrets manager that
+# replaces hand-editing backend/supabase/.env from .env.example. This is a
+# separate compose project from backend/supabase/docker-compose.yml on
+# purpose: Infisical is infrastructure that predates and outlives any one
+# deployment of the app stack (it stores secrets for this project and any
+# future ones), and it has its own bootstrapping order requirement — it
+# must already be running and populated *before* backend/supabase/.env can
+# be rendered from it, so `docker compose up` on the app stack can even
+# read its own ${VAR} interpolation.
+#
+# Mirrors Infisical's own reference deployment
+# (https://github.com/Infisical/infisical/blob/main/docker-compose.prod.yml)
+# with per-service healthchecks added — every other compose file in this
+# repo requires one (see backend/supabase/docker-compose.yml's own
+# comment), a gap the upstream file itself doesn't cover.
+#
+# Run on any machine with a working Docker daemon (this sandbox has none —
+# see backend/supabase/PHASE6_NOTES.md for the same constraint on every
+# prior infra phase):
+#   cd backend/infisical
+#   cp .env.example .env
+#   # Fill in ENCRYPTION_KEY (openssl rand -hex 16), AUTH_SECRET
+#   # (openssl rand -base64 32), and POSTGRES_PASSWORD — these three are
+#   # the one remaining root of trust; see docs/DEPLOYMENT.md "Secrets
+#   # Management (Infisical)" for why they can't themselves live in
+#   # Infisical and how to store them instead.
+#   docker compose up -d
+#   # Then, one-time, via the UI at http://localhost:8060: create an org/
+#   # project, import backend/supabase/.env.example's variable names as
+#   # secrets, and create a machine identity (Universal Auth) scoped to
+#   # that project for backend/scripts/render-secrets-from-infisical.mjs
+#   # to authenticate as.
+
+name: barangay-infisical
+
+services:
+  infisical-db:
+    image: postgres:14-alpine
+    container_name: barangay-infisical-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-infisical}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-infisical}
+    volumes:
+      - infisical_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-infisical}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  infisical-redis:
+    image: redis:alpine
+    container_name: barangay-infisical-redis
+    restart: unless-stopped
+    volumes:
+      - infisical_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Loopback-only by default (127.0.0.1:8060) — this is an admin panel
+  # holding every secret for the whole platform, so it must never sit
+  # behind the same public WAF/tunnel ingress the app itself uses
+  # (backend/supabase/docker-compose.yml's `waf` service). Reach it via
+  # SSH tunnel / VPN / your own reverse proxy with its own auth in front,
+  # not by publishing this port further.
+  infisical:
+    image: infisical/infisical:latest
+    container_name: barangay-infisical
+    restart: unless-stopped
+    depends_on:
+      infisical-db:
+        condition: service_healthy
+      infisical-redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      AUTH_SECRET: ${AUTH_SECRET}
+      SITE_URL: ${SITE_URL:-http://localhost:8060}
+      DB_CONNECTION_URI: postgres://${POSTGRES_USER:-infisical}:${POSTGRES_PASSWORD}@infisical-db:5432/${POSTGRES_DB:-infisical}
+      REDIS_URL: redis://infisical-redis:6379
+    ports:
+      - "127.0.0.1:8060:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  infisical_db_data:
+  infisical_redis_data:
