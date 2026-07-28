@@ -860,7 +860,7 @@ function DownloadAppButton() {
                 <X className="size-4" />
               </button>
 
-              <div className="px-6">
+              <div className="max-h-[75vh] overflow-y-auto overscroll-contain px-6">
                 <div className="flex items-center gap-3">
                   <ClustrMark className="size-14 shrink-0" />
                   <div>
@@ -935,8 +935,8 @@ function DownloadAppButton() {
                   )}
                 </div>
 
-                {outcome === 'dismissed' && (
-                  <p className="mt-3 text-center font-display text-xs text-white/40">
+                {outcome === 'dismissed' && !canInstall && (
+                  <p className="mt-3 pb-1 text-center font-display text-xs text-white/40">
                     No worries — you can install anytime from here.
                   </p>
                 )}
