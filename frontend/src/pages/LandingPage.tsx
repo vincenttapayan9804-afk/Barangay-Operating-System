@@ -30,6 +30,14 @@ import {
   Search,
   Mail,
   HardDrive,
+  ListChecks,
+  Shield,
+  Cloud,
+  LayoutGrid,
+  Workflow,
+  EyeOff,
+  Boxes,
+  ClipboardCheck,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ClustrMark } from '@/components/ClustrLogo'
@@ -70,6 +78,63 @@ const capabilities = [
   {
     label: 'Dedicated Onboarding & Support',
     benefit: "You're never on your own — a support team sets up your barangay's workspace and is on hand whenever you need help.",
+  },
+]
+
+const complianceStandards = [
+  {
+    icon: ShieldCheck,
+    code: 'OWASP ASVS',
+    name: 'Application Security Verification Standard',
+    note: 'L2 controls mapped across authentication, session, and access-control code.',
+  },
+  {
+    icon: ListChecks,
+    code: 'CIS Controls',
+    name: 'CIS Critical Security Controls v8',
+    note: 'Safeguards mapped to our RBAC, logging, and data-protection implementation.',
+  },
+  {
+    icon: Shield,
+    code: 'NIST CSF',
+    name: 'NIST Cybersecurity Framework',
+    note: 'Identify–Protect–Detect–Respond–Recover functions mapped to platform controls.',
+  },
+  {
+    icon: Cloud,
+    code: 'CSA STAR',
+    name: 'Cloud Security Alliance STAR',
+    note: 'Cloud Controls Matrix self-assessed against our hosting and data-handling controls.',
+  },
+  {
+    icon: LayoutGrid,
+    code: 'Essential Eight',
+    name: 'ACSC Essential Eight Maturity Model',
+    note: 'Used as a mitigation-strategy reference for our own hardening baseline.',
+  },
+  {
+    icon: Workflow,
+    code: 'DICT SDLC',
+    name: 'DICT Secure Software Development Lifecycle',
+    note: 'Security gates mapped across our own build, review, and release pipeline.',
+  },
+  {
+    icon: EyeOff,
+    code: 'NIST Privacy',
+    name: 'NIST Privacy Framework',
+    note: 'Privacy controls mapped alongside our Data Privacy Act (RA 10173) safeguards.',
+  },
+  {
+    icon: Boxes,
+    code: 'OWASP Supply Chain',
+    name: 'Dependency & Supply Chain Security',
+    note: 'SBOM generation and license scanning mapped into every CI build, per OWASP guidance.',
+  },
+  {
+    icon: ClipboardCheck,
+    code: 'UK Cyber Essentials',
+    name: 'NCSC Cyber Essentials Scheme',
+    note: 'Boundary, access, and patching controls mapped against its five core themes.',
   },
 ]
 
@@ -555,6 +620,68 @@ function TermReveal({
   )
 }
 
+function ComplianceBadge({ item }: { item: (typeof complianceStandards)[number] }) {
+  return (
+    <motion.div
+      whileHover={{ y: -6, rotateX: 6, rotateY: -6, scale: 1.03 }}
+      transition={{ type: 'spring', stiffness: 280, damping: 22 }}
+      style={{ transformPerspective: 900 }}
+      className="relative flex w-72 shrink-0 items-start gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-card/90 p-5 shadow-md"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-10 -top-10 size-28 rounded-full bg-mint/15 blur-2xl"
+      />
+      <div className="relative inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-mint to-mint-deep text-ink shadow-elevated">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-b from-white/50 via-white/10 to-transparent opacity-80"
+        />
+        <item.icon className="relative size-5" strokeWidth={2.25} />
+      </div>
+      <div className="relative">
+        <div className="flex items-center gap-2">
+          <p className="font-display text-sm font-semibold text-foreground">{item.code}</p>
+          <span className="rounded-full border border-mint-deep/30 bg-mint/10 px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-wide text-mint-deep dark:text-mint">
+            Mapped
+          </span>
+        </div>
+        <p className="mt-1 font-display text-xs text-muted-foreground">{item.name}</p>
+        <p className="mt-1.5 font-display text-xs leading-relaxed text-muted-foreground/80">{item.note}</p>
+      </div>
+    </motion.div>
+  )
+}
+
+function ComplianceCarousel({ items }: { items: typeof complianceStandards }) {
+  const track = [...items, ...items]
+
+  return (
+    <div className="mt-10">
+      <ul className="sr-only">
+        {items.map((item) => (
+          <li key={item.code}>
+            {item.code} — {item.name}: {item.note}
+          </li>
+        ))}
+      </ul>
+      <div
+        aria-hidden="true"
+        className="group relative overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+      >
+        <div
+          className="flex w-max gap-5 animate-marquee group-hover:[animation-play-state:paused]"
+          style={{ animationDuration: '48s' }}
+        >
+          {track.map((item, i) => (
+            <ComplianceBadge key={i} item={item} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FaqItem({ q, a, isOpen, onToggle }: { q: string; a: string; isOpen: boolean; onToggle: () => void }) {
   return (
     <div className="border-b border-border">
@@ -724,6 +851,43 @@ export default function LandingPage() {
               Built for the Philippines' <span className="font-semibold text-foreground">42,000+ barangays</span> —
               a single platform designed to scale from one barangay office to hundreds, with every
               claim above enforced in code, not just promised in marketing.
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── Benchmarked compliance & standards mapping ── */}
+      <section className="border-b border-border bg-background">
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+              Benchmarked Compliance and Standards Mapping
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Measured Against the Frameworks That Matter
+            </h2>
+            <p className="mt-4 font-display text-base text-muted-foreground">
+              From application security and cloud assurance to privacy, secure development, and
+              supply-chain integrity, CLUSTR's controls are mapped, documented, and kept current
+              against nine recognized frameworks — self-assessed in the open, not marketed as
+              certifications we don't hold.
+            </p>
+          </Reveal>
+
+          <ComplianceCarousel items={complianceStandards} />
+
+          <Reveal delay={0.15}>
+            <p className="mx-auto mt-6 max-w-2xl text-center font-display text-sm text-muted-foreground">
+              Framework alignment is self-assessed and documented in our{' '}
+              <a
+                href={`${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-mint-deep underline decoration-transparent transition-colors hover:decoration-current dark:text-mint"
+              >
+                public Compliance Mapping
+              </a>{' '}
+              — not an external certification or audit claim.
             </p>
           </Reveal>
         </div>

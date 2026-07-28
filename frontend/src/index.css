@@ -98,6 +98,12 @@
   }
 }
 
+@utility animate-marquee {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: marquee 26s linear infinite;
+  }
+}
+
 @utility shimmer {
   @media (prefers-reduced-motion: no-preference) {
     background: linear-gradient(
@@ -129,6 +135,11 @@
 @keyframes shimmer {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 a, button, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
