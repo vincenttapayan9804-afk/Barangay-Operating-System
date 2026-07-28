@@ -41,6 +41,10 @@ import {
   Share2,
   SquarePlus,
   Download,
+  Accessibility,
+  FileCode2,
+  GitBranch,
+  Leaf,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ClustrMark } from '@/components/ClustrLogo'
@@ -159,6 +163,111 @@ const complianceStandards = [
     note: 'Boundary, access, and patching controls mapped against its five core themes.',
   },
 ]
+
+type BadgeStatus = 'Implemented' | 'Self-Assessed' | 'Enables Compliance' | 'Roadmap'
+
+const ossBadges: { icon: typeof ShieldCheck; title: string; status: BadgeStatus; detail: string; href?: string }[] = [
+  {
+    icon: Accessibility,
+    title: 'WCAG 2.1 AA',
+    status: 'Self-Assessed',
+    detail: 'Semantic markup, keyboard focus states, and ARIA roles throughout the app — self-reviewed against WCAG 2.1 AA, not yet third-party audited.',
+  },
+  {
+    icon: FileCode2,
+    title: 'W3C Verifiable Credentials',
+    status: 'Roadmap',
+    detail: 'No DID/VC issuance exists in the platform today. Tracked as a future integration point, not a shipped capability — see the Security Roadmap.',
+  },
+  {
+    icon: Landmark,
+    title: 'DILG Transparency Seal',
+    status: 'Enables Compliance',
+    detail: "The Seal itself is issued to your barangay by DILG, not to CLUSTR — but every disclosure it requires (budget, disbursements, agenda) is already structured, exportable data in the Finance and Agenda modules.",
+  },
+  {
+    icon: ShieldCheck,
+    title: 'OWASP Top 10',
+    status: 'Self-Assessed',
+    detail: 'Controls mapped against OWASP ASVS L2 across authentication, session, and access-control code — self-assessed, documented in the public Compliance Mapping.',
+    href: `${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`,
+  },
+  {
+    icon: Boxes,
+    title: 'SBOM Verified',
+    status: 'Implemented',
+    detail: 'A CycloneDX Software Bill of Materials and license-compliance gate run on every CI build — fails on GPL/AGPL dependencies.',
+    href: `${REPO_URL}/blob/main/.github/workflows/ci.yml`,
+  },
+  {
+    icon: HardDrive,
+    title: 'Resilience & DR',
+    status: 'Implemented',
+    detail: 'Continuous, near-real-time database replication to S3-compatible storage via pgBackRest, plus periodic snapshot backups.',
+  },
+  {
+    icon: WifiOff,
+    title: 'Offline-First / PWA',
+    status: 'Implemented',
+    detail: 'Installable Progressive Web App with an IndexedDB write queue — staff keep working through outages, syncing the moment connectivity returns.',
+  },
+  {
+    icon: FileCode2,
+    title: 'OpenAPI / Swagger',
+    status: 'Implemented',
+    detail: 'PostgREST auto-generates a live OpenAPI 2.0 (Swagger) spec for every table and RPC endpoint behind Kong — no hand-maintained API docs to drift out of date.',
+  },
+  {
+    icon: GitBranch,
+    title: 'SemVer & Git Releases',
+    status: 'Implemented',
+    detail: 'Versioned per Semantic Versioning 2.0.0, with tagged GitHub releases and a maintained CHANGELOG.',
+    href: `${REPO_URL}/blob/main/CHANGELOG.md`,
+  },
+  {
+    icon: Leaf,
+    title: 'Sustainable GovTech',
+    status: 'Self-Assessed',
+    detail: 'Offline-first sync minimizes redundant network calls, and self-hosting lets a barangay right-size hardware instead of over-provisioning cloud capacity — a practical efficiency stance, not a certified green-hosting claim.',
+  },
+]
+
+function statusPillClasses(status: BadgeStatus) {
+  if (status === 'Implemented') {
+    return 'border-mint-deep/30 bg-mint/10 text-mint-deep dark:text-mint'
+  }
+  if (status === 'Enables Compliance') {
+    return 'border-border bg-transparent text-muted-foreground'
+  }
+  if (status === 'Self-Assessed') {
+    return 'border-border border-dashed bg-transparent text-muted-foreground'
+  }
+  return 'border-border border-dashed bg-transparent text-muted-foreground/70'
+}
+
+function OssBadgeCard({ item }: { item: (typeof ossBadges)[number] }) {
+  const Wrapper = item.href ? 'a' : 'div'
+  const wrapperProps = item.href
+    ? { href: item.href, target: '_blank', rel: 'noopener noreferrer' }
+    : {}
+
+  return (
+    <TermReveal benefit={item.detail}>
+      <Wrapper
+        {...wrapperProps}
+        className="flex h-full flex-col items-center gap-2.5 rounded-2xl border border-border bg-card px-4 py-6 text-center shadow-sm transition-shadow duration-200 hover:shadow-md"
+      >
+        <span className="inline-flex size-11 items-center justify-center rounded-xl bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+          <item.icon className="size-5" />
+        </span>
+        <p className="font-display text-sm font-semibold text-foreground">{item.title}</p>
+        <span className={`rounded-full border px-2.5 py-0.5 font-display text-[10px] font-semibold uppercase tracking-wide ${statusPillClasses(item.status)}`}>
+          {item.status}
+        </span>
+      </Wrapper>
+    </TermReveal>
+  )
+}
 
 const features = [
   {
@@ -1128,6 +1237,33 @@ export default function LandingPage() {
               — transparent by design, open for anyone to review line by line.
             </p>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ── Open standards & compliance badges ── */}
+      <section id="badges" className="border-b border-border bg-paper">
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+              Open Standards &amp; Compliance Badges
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Every Claim Labeled, Nothing Overstated
+            </h2>
+            <p className="mt-4 font-display text-base text-muted-foreground">
+              A solid pill marks something already shipped and verifiable in this repo. A dashed
+              outline marks a self-assessment or a roadmap item — hover or tap any badge for the
+              honest detail behind it.
+            </p>
+          </Reveal>
+
+          <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {ossBadges.map((item, i) => (
+              <Reveal key={item.title} delay={(i % 5) * 0.05}>
+                <OssBadgeCard item={item} />
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 
