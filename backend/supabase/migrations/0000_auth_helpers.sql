@@ -26,17 +26,30 @@ create or replace function auth.role() returns text
   as $$ select nullif(auth.jwt()->>'role','')::text $$;
 
 -- The real GoTrue binary (which we depend on for actual login) also ships
--- its own migrations that (re)create these same three functions the first
--- time the `auth` service itself starts up -- as the supabase_auth_admin
--- role, not postgres/migrate.sh (which is what created them above). Without
--- this ownership transfer, GoTrue's own `create or replace function
--- auth.uid()`/`auth.role()`/`auth.jwt()` fails outright with "must be owner
--- of function", and the auth service never becomes healthy. GoTrue's own
--- final versions are a compatible superset of these (they also read
--- request.jwt.claims), so letting it re-create them afterwards is safe.
-alter function auth.jwt() owner to supabase_auth_admin;
-alter function auth.uid() owner to supabase_auth_admin;
-alter function auth.role() owner to supabase_auth_admin;
+-- its own migrations that (re)create these same functions the first time
+-- the `auth` service itself starts up -- as the supabase_auth_admin role,
+-- not postgres/migrate.sh (which is what created/owns them here, and
+-- auth.email() too, which the base image's own init-scripts define before
+-- this migration ever runs). Without this ownership transfer, GoTrue's own
+-- `create or replace function auth.uid()`/`auth.role()`/`auth.jwt()`/
+-- `auth.email()` fails outright with "must be owner of function", and the
+-- auth service never becomes healthy. GoTrue's own final versions are a
+-- compatible superset of these (they also read request.jwt.claims), so
+-- letting it re-create them afterwards is safe. Guarded with an existence
+-- check since auth.email() isn't something we define ourselves.
+do $$
+declare
+  fn text;
+begin
+  foreach fn in array array['jwt', 'uid', 'role', 'email'] loop
+    if exists (
+      select 1 from pg_proc
+      where proname = fn and pronamespace = 'auth'::regnamespace
+    ) then
+      execute format('alter function auth.%I() owner to supabase_auth_admin', fn);
+    end if;
+  end loop;
+end $$;
 
 create schema if not exists app;
 
