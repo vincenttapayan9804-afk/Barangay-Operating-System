@@ -38,9 +38,13 @@ import {
   EyeOff,
   Boxes,
   ClipboardCheck,
+  Share2,
+  SquarePlus,
+  Download,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ClustrMark } from '@/components/ClustrLogo'
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock'
 
 const REPO = 'vincenttapayan9804-afk/Barangay-Operating-System'
 const REPO_URL = `https://github.com/${REPO}`
@@ -78,6 +82,24 @@ const capabilities = [
   {
     label: 'Dedicated Onboarding & Support',
     benefit: "You're never on your own — a support team sets up your barangay's workspace and is on hand whenever you need help.",
+  },
+]
+
+const appBenefits = [
+  {
+    icon: ShieldCheck,
+    title: 'Security, unchanged',
+    detail: 'Installing skips nothing — the same server-enforced permissions and tamper-evident audit trail protect every action, on your home screen or in your browser.',
+  },
+  {
+    icon: Zap,
+    title: 'One tap, every time',
+    detail: 'No browser bar, no re-typing a URL, no repeated sign-in redirects — CLUSTR opens straight into your barangay dashboard.',
+  },
+  {
+    icon: WifiOff,
+    title: 'Keeps working offline',
+    detail: "Log residents, issue documents, and record finance entries even when the signal drops — everything syncs the moment you're back online.",
   },
 ]
 
@@ -718,6 +740,215 @@ function FaqItem({ q, a, isOpen, onToggle }: { q: string; a: string; isOpen: boo
   )
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+function usePwaInstall() {
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
+  const [installed, setInstalled] = useState(false)
+  const [isIos] = useState(() => /iphone|ipad|ipod/i.test(window.navigator.userAgent))
+
+  useEffect(() => {
+    const alreadyStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true
+    if (alreadyStandalone) {
+      setInstalled(true)
+      return
+    }
+
+    const onPrompt = (e: Event) => {
+      e.preventDefault()
+      setInstallEvent(e as BeforeInstallPromptEvent)
+    }
+    const onInstalled = () => {
+      setInstalled(true)
+      setInstallEvent(null)
+    }
+
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  const install = async () => {
+    if (!installEvent) return null
+    await installEvent.prompt()
+    const { outcome } = await installEvent.userChoice
+    if (outcome === 'accepted') setInstalled(true)
+    setInstallEvent(null)
+    return outcome
+  }
+
+  return { canInstall: !!installEvent, installed, isIos, install }
+}
+
+function DownloadAppButton() {
+  const { canInstall, installed, isIos, install } = usePwaInstall()
+  const [open, setOpen] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [outcome, setOutcome] = useState<'accepted' | 'dismissed' | null>(null)
+  useBodyScrollLock(open)
+
+  useEffect(() => {
+    if (!open) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open])
+
+  const handleInstall = async () => {
+    setInstalling(true)
+    const result = await install()
+    setInstalling(false)
+    setOutcome(result)
+    if (result === 'accepted') {
+      setTimeout(() => setOpen(false), 1400)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setOutcome(null)
+          setOpen(true)
+        }}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-mint/30 bg-mint/10 px-7 py-3.5 font-display text-sm font-semibold text-mint backdrop-blur-md transition-all duration-200 hover:bg-mint/15 hover:shadow-lg hover:shadow-mint/10 sm:w-auto"
+      >
+        <Download className="size-4" />
+        Download the CLUSTR App
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Download the CLUSTR App"
+              initial={{ opacity: 0, y: 48, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 48, scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              className="relative w-full max-w-sm overflow-hidden rounded-t-[2rem] border border-white/10 bg-[#101B17]/95 pb-6 pt-3 shadow-2xl backdrop-blur-xl sm:rounded-[2rem] sm:pb-8 sm:pt-8"
+            >
+              <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="absolute right-4 top-4 hidden size-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/15 hover:text-white sm:flex"
+              >
+                <X className="size-4" />
+              </button>
+
+              <div className="px-6">
+                <div className="flex items-center gap-3">
+                  <ClustrMark className="size-14 shrink-0" />
+                  <div>
+                    <p className="font-display text-base font-semibold text-white">CLUSTR</p>
+                    <p className="font-display text-xs text-white/50">Barangay Operating System</p>
+                  </div>
+                </div>
+
+                <ul className="mt-6 space-y-4">
+                  {appBenefits.map((b, i) => (
+                    <motion.li
+                      key={b.title}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.08 * i }}
+                      className="flex items-start gap-3"
+                    >
+                      <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint/15 text-mint">
+                        <b.icon className="size-4" />
+                      </span>
+                      <span>
+                        <p className="font-display text-sm font-semibold text-white">{b.title}</p>
+                        <p className="mt-0.5 font-display text-xs leading-relaxed text-white/60">{b.detail}</p>
+                      </span>
+                    </motion.li>
+                  ))}
+                </ul>
+
+                <div className="mt-7">
+                  {installed ? (
+                    <div className="flex items-center justify-center gap-2 rounded-full border border-mint/25 bg-mint/10 py-3 font-display text-sm font-semibold text-mint">
+                      <CheckCircle2 className="size-4" />
+                      {outcome === 'accepted' ? 'Installed!' : 'Already installed on this device'}
+                    </div>
+                  ) : canInstall ? (
+                    <button
+                      type="button"
+                      onClick={handleInstall}
+                      disabled={installing}
+                      className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-mint to-mint-deep px-7 py-3.5 font-display text-sm font-semibold text-ink shadow-lg shadow-mint/20 transition-all duration-200 hover:shadow-xl hover:shadow-mint/30 disabled:opacity-70"
+                    >
+                      {installing ? (
+                        'Opening install prompt…'
+                      ) : (
+                        <>
+                          <Download className="size-4" />
+                          Install Now
+                        </>
+                      )}
+                    </button>
+                  ) : isIos ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="font-display text-xs font-semibold uppercase tracking-wide text-white/50">
+                        Add to Home Screen
+                      </p>
+                      <ol className="mt-3 space-y-2.5">
+                        <li className="flex items-center gap-2.5 font-display text-sm text-white/80">
+                          <Share2 className="size-4 shrink-0 text-mint" />
+                          Tap the Share button in Safari
+                        </li>
+                        <li className="flex items-center gap-2.5 font-display text-sm text-white/80">
+                          <SquarePlus className="size-4 shrink-0 text-mint" />
+                          Tap "Add to Home Screen"
+                        </li>
+                      </ol>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center font-display text-xs leading-relaxed text-white/60">
+                      Look for "Install App" or "Add to Home Screen" in your browser's menu to add CLUSTR to this
+                      device.
+                    </div>
+                  )}
+                </div>
+
+                {outcome === 'dismissed' && (
+                  <p className="mt-3 text-center font-display text-xs text-white/40">
+                    No worries — you can install anytime from here.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
 export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
   const heroRef = useRef<HTMLDivElement>(null)
@@ -776,7 +1007,7 @@ export default function LandingPage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="mt-10 flex flex-col items-start gap-3 sm:flex-row"
+              className="mt-10 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap"
             >
               <Link
                 to="/login"
@@ -791,6 +1022,7 @@ export default function LandingPage() {
               >
                 Explore Features
               </a>
+              <DownloadAppButton />
             </motion.div>
 
             <div className="mt-14 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
