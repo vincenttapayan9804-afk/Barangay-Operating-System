@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-07-28
+
 ### Changed
 
 - Relicensed from MIT (open source) to a proprietary, commercially licensed model. See root
   `LICENSE`; the platform is no longer free or open source.
+- Migrated the entire backend from PocketBase to a self-hosted Supabase stack (GoTrue, PostgREST,
+  Kong, Postgres/RLS, Realtime, edge-runtime, and a custom WebAuthn sidecar), rewriting the
+  frontend onto `@supabase/supabase-js`.
+- Rebranded platform positioning from generic "Barangay Operating System" copy to "Enterprise-Grade
+  Local Governance System" across the landing page, sign-in screen, and app metadata.
 
 ### Added
 
@@ -18,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Complete documentation suite (architecture, development, deployment, security, contributing guides)
 - CI/CD pipeline configuration (GitHub Actions)
 - Community health files (issue templates, PR template, security policy)
+- Security Roadmap Phases 1-5: documentation & compliance-mapping foundations, browser-side ASVS
+  hardening (CSP, zod validation, session hardening), backend/API ASVS hardening (Kong
+  rate-limiting, SHA-256 hash-chained audit logs, signed Cloudinary uploads, DLP masking), a
+  self-hosted Coraza/OWASP CRS WAF, and self-hosted Infisical secrets management.
+- Expanded landing-page footer with resident-facing trust statements, technical governance metrics
+  for auditors, a copyright notice, and an open-standards/compliance badge showcase.
 
 ## [0.0.0] — Initial Development
 
