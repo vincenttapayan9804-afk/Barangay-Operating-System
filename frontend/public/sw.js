@@ -1,24 +1,24 @@
-// This service worker exists only to unregister any previously installed
-// version (barangayos-v1). It does not cache anything.
-// Once every client has unregistered, this file can be deleted.
+// Registered solely to satisfy PWA installability criteria (a controlling
+// service worker with a fetch handler). This app's offline support is
+// handled by the app itself (local queue + sync on reconnect), not by
+// asset caching here, so this worker deliberately caches nothing and
+// simply passes every request straight through to the network.
 
 self.addEventListener('install', () => self.skipWaiting())
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     Promise.all([
-      // Delete all caches from the old SW
+      // Clean up any caches left behind by the previous (self-unregistering)
+      // version of this file.
       caches.keys().then((keys) =>
         Promise.all(keys.filter((k) => k.startsWith('barangayos-')).map((k) => caches.delete(k)))
       ),
-      // Unregister this SW — on the next navigation it will be gone
-      self.registration.unregister(),
-    ]).then(() => self.clients.claim())
+      self.clients.claim(),
+    ])
   )
 })
 
-// Passthrough — handle every request by going directly to the network.
-// This is only needed until the SW finishes activating above.
 self.addEventListener('fetch', (e) => {
-  e.respondWith(fetch(e.request).catch(() => new Response(null, { status: 503 })))
+  e.respondWith(fetch(e.request))
 })
