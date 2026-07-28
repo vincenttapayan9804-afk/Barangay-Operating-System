@@ -620,13 +620,19 @@ function TermReveal({
   )
 }
 
-function ComplianceBadge({ item }: { item: (typeof complianceStandards)[number] }) {
+function ComplianceBadge({
+  item,
+  className = '',
+}: {
+  item: (typeof complianceStandards)[number]
+  className?: string
+}) {
   return (
     <motion.div
       whileHover={{ y: -6, rotateX: 6, rotateY: -6, scale: 1.03 }}
       transition={{ type: 'spring', stiffness: 280, damping: 22 }}
       style={{ transformPerspective: 900 }}
-      className="relative flex w-72 shrink-0 items-start gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-card/90 p-5 shadow-md"
+      className={`relative flex w-72 shrink-0 items-start gap-4 overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-card to-card/90 p-5 shadow-md ${className}`}
     >
       <div
         aria-hidden="true"
@@ -667,14 +673,14 @@ function ComplianceCarousel({ items }: { items: typeof complianceStandards }) {
       </ul>
       <div
         aria-hidden="true"
-        className="group relative overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+        className="group relative overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)] motion-reduce:[mask-image:none]"
       >
         <div
-          className="flex w-max gap-5 animate-marquee group-hover:[animation-play-state:paused]"
+          className="flex w-max gap-5 animate-marquee group-hover:[animation-play-state:paused] motion-reduce:w-full motion-reduce:flex-wrap motion-reduce:justify-center"
           style={{ animationDuration: '48s' }}
         >
           {track.map((item, i) => (
-            <ComplianceBadge key={i} item={item} />
+            <ComplianceBadge key={i} item={item} className={i >= items.length ? 'motion-reduce:hidden' : ''} />
           ))}
         </div>
       </div>
@@ -869,8 +875,8 @@ export default function LandingPage() {
             <p className="mt-4 font-display text-base text-muted-foreground">
               From application security and cloud assurance to privacy, secure development, and
               supply-chain integrity, CLUSTR's controls are mapped, documented, and kept current
-              against nine recognized frameworks — self-assessed in the open, not marketed as
-              certifications we don't hold.
+              against nine recognized frameworks — self-assessed and published in the open, for
+              anyone to verify.
             </p>
           </Reveal>
 
@@ -887,7 +893,7 @@ export default function LandingPage() {
               >
                 public Compliance Mapping
               </a>{' '}
-              — not an external certification or audit claim.
+              — transparent by design, open for anyone to review line by line.
             </p>
           </Reveal>
         </div>
