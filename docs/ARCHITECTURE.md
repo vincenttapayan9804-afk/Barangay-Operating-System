@@ -2,7 +2,7 @@
 
 ## System Overview
 
-CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared, self-hosted Supabase stack serves every onboarded barangay, with tenant isolation enforced server-side by Postgres Row-Level Security (see [Multi-Tenancy](#multi-tenancy) below). The backend is nine containers: **db** (Postgres), **auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime), **edge-runtime** (Deno Edge Functions), **kong** (API gateway, the single public entry point for all of the above), **meilisearch** (full-text search), **webauthn** (passkey sidecar), **supavisor** (connection pooler), and **backup** (continuous pgBackRest backup). A Cloudflare Tunnel provides secure public internet access, same as before.
+CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared, self-hosted Supabase stack serves every onboarded barangay, with tenant isolation enforced server-side by Postgres Row-Level Security (see [Multi-Tenancy](#multi-tenancy) below). The backend is eleven containers: **waf** (Coraza/OWASP CRS, the public entry point — Security Phase 4), **frontend** (nginx, SPA host + reverse proxy), **db** (Postgres), **auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime), **edge-runtime** (Deno Edge Functions), **kong** (API gateway), **meilisearch** (full-text search), **webauthn** (passkey sidecar), **supavisor** (connection pooler), and **backup** (continuous pgBackRest backup). A Cloudflare Tunnel provides secure public internet access, same as before.
 
 ```
                          ┌──────────────────────────────┐
@@ -13,6 +13,11 @@ CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared, self-hosted S
                      ┌──────────┴──────────┐
                      │  cloudflared tunnel  │
                      └──────────┬──────────┘
+                                │
+                     ┌──────────┴──────────┐
+                     │  waf (Coraza/CRS)   │  ← Security Phase 4: self-hosted
+                     │  ports 8080/8443    │    second WAF layer, screens
+                     └──────────┬──────────┘    requests before nginx/Kong
                                 │
                      ┌──────────┴──────────┐
                      │   nginx (SPA host)   │
@@ -48,8 +53,10 @@ CLUSTR (BarangayOS) is a **multi-tenant** platform — one shared, self-hosted S
         neither is exposed publicly.
 
 LAN Users: http://192.168.x.x:8080 or https://192.168.x.x:8443 (HTTPS with mkcert for PWA)
-Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → nginx, HTTPS)
+Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → waf, HTTPS)
 ```
+
+`waf` (`backend/waf/`, a custom Caddy build with the `coraza-caddy` module — see its own Dockerfile/Caddyfile comments) is now the container that publishes 8080/8443 and terminates TLS; `frontend`'s nginx no longer publishes any port to the host and is reached only as `frontend:80` on the internal compose network. This is a second, self-hosted WAF layer in front of Cloudflare's own free-tier WAF (`docs/THREAT_MODEL.md`) — the OWASP Core Rule Set screens for injection/XSS/scanner traffic before a request ever reaches nginx or Kong, not a replacement for the existing chain below it, which is otherwise unchanged.
 
 Kong (`backend/supabase/kong.yml`) is the single public entry point for every backend service — `/auth/v1/*`, `/rest/v1/*`, `/realtime/v1/*`, and `/functions/v1/*`, each gated by an apikey (the anon or service_role JWT) plus an ACL group check. The frontend's `@supabase/supabase-js` client (`frontend/src/lib/supabaseClient.ts`) talks to Kong exclusively — it never connects to `db`, `rest`, `auth`, `realtime`, or `edge-runtime` directly, in dev or in production. See `docs/DEPLOYMENT.md` for the full hosting/scaling guide.
 

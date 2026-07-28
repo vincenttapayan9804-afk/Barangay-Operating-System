@@ -69,9 +69,10 @@ create policy households_delete on public.households for delete
 ### Network Security
 
 - **Cloudflare Tunnel** — No open inbound ports on the server. An outbound-only connection is established from the server to Cloudflare's edge network.
-- **WAF** — Cloudflare Web Application Firewall protects against common web exploits (SQL injection, XSS, CSRF, etc.)
-- **HTTPS** — All traffic through the tunnel is encrypted with TLS. Non-HTTPS connections are rejected by Cloudflare.
-- **Local Network** — LAN users access the server directly over HTTP. The internal network is assumed to be trusted. Postgres's own port (`54322`) should remain LAN-only — only Kong's gateway port (`8000`) and the frontend need to be reachable at all.
+- **WAF (Cloudflare)** — Cloudflare's free-tier Web Application Firewall protects against common web exploits (SQL injection, XSS, CSRF, etc.)
+- **WAF (Coraza, self-hosted)** — A second, self-hosted WAF layer (`backend/waf/`, a custom Caddy build with the `coraza-caddy` module and the OWASP Core Rule Set) sits directly in front of `frontend`/Kong, screening requests Cloudflare's own free-tier managed rules don't cover. It is now the actual public entry point (ports 8080/8443) — `frontend`'s nginx no longer publishes any port to the host.
+- **HTTPS** — All traffic through the tunnel is encrypted with TLS. Non-HTTPS connections are rejected by Cloudflare; the `waf` container terminates TLS for LAN/direct access (self-signed placeholder or mkcert — see `docs/DEPLOYMENT.md`).
+- **Local Network** — LAN users access the server directly over HTTP/HTTPS through `waf`. The internal network is assumed to be trusted. Postgres's own port (`54322`) should remain LAN-only — only `waf`'s published ports need to be reachable at all.
 - **Single public entry point** — Kong is the only way in for `auth`/`rest`/`realtime`/`functions`; every route requires an `apikey` header (anon or service_role) plus, for authenticated routes, a valid JWT.
 
 ### Data Security

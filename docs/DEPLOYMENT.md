@@ -2,9 +2,10 @@
 
 ## Architecture Overview
 
-The production deployment is Docker Compose stack of ten containers, defined in
-`backend/supabase/docker-compose.yml`: **frontend** (nginx, SPA + reverse proxy), **kong**
-(API gateway), **auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime),
+The production deployment is Docker Compose stack of eleven containers, defined in
+`backend/supabase/docker-compose.yml`: **waf** (Coraza/OWASP CRS, the public entry point —
+Security Phase 4), **frontend** (nginx, SPA + reverse proxy), **kong** (API gateway),
+**auth** (GoTrue), **rest** (PostgREST), **realtime** (Supabase Realtime),
 **edge-runtime** (Deno Edge Functions), **db** (Postgres), **supavisor** (connection
 pooler), **meilisearch** (full-text search), **webauthn** (passkey sidecar), and **backup**
 (continuous pgBackRest backup).
@@ -20,8 +21,13 @@ pooler), **meilisearch** (full-text search), **webauthn** (passkey sidecar), and
                      └──────────┬──────────┘
                                 │
                      ┌──────────┴──────────┐
-                     │  nginx (port 8080)   │
+                     │  waf (port 8080)     │
                      │  + HTTPS (8443)      │
+                     │  Coraza/OWASP CRS    │
+                     └──────────┬──────────┘
+                                │
+                     ┌──────────┴──────────┐
+                     │  nginx (internal)    │
                      │  SPA + API proxy     │
                      └──────────┬──────────┘
                                 │ /rest/v1, /auth/v1, /realtime/v1, /functions/v1
@@ -35,11 +41,18 @@ pooler), **meilisearch** (full-text search), **webauthn** (passkey sidecar), and
                                               │
                                         supavisor (pooled port 6543)
 
-LAN Users: http://192.168.x.x:8080 (through nginx, zero latency)
-Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → nginx, HTTPS)
+LAN Users: http://192.168.x.x:8080 (through waf → nginx, zero latency)
+Remote:    https://app.yourdomain.com (via Cloudflare Tunnel → waf, HTTPS)
 ```
 
 See `docs/ARCHITECTURE.md`'s own diagram for the full container-to-container picture, including `meilisearch`, `webauthn`, and `backup`, none of which are reached directly by the browser. There is no PocketBase-style admin UI in this stack — table data is managed through the app itself (`/platform-admin` for tenant onboarding) or, for one-off operator tasks, directly via `psql` against `db`.
+
+`waf` (`backend/waf/`) took over the 8080/8443 ports `frontend` used to publish directly —
+it's a self-hosted second WAF layer (Coraza engine + OWASP Core Rule Set) that screens
+every request before it reaches nginx or Kong, complementing rather than replacing
+Cloudflare's own free-tier WAF (see `docs/THREAT_MODEL.md`). It reuses the same
+`backend/certs/` volume (self-signed placeholder, or mkcert — see below) that `frontend`
+used to mount, since it now terminates the deployment's real TLS instead.
 
 ## Prerequisites
 
@@ -651,7 +664,7 @@ For barangay offices that don't need internet access:
 
 If you want the PWA install button to appear on LAN devices, the site must be served over HTTPS. This option adds HTTPS on the LAN without needing a domain or internet connection.
 
-> **How it works:** The Docker image includes a self-signed placeholder certificate so nginx always starts with HTTPS enabled (port 8443). For proper PWA install without browser warnings, generate device-trusted certs using `mkcert` — the real certs silently override the placeholder via a Docker volume mount.
+> **How it works:** The `waf` container's image includes a self-signed placeholder certificate so it always starts with HTTPS enabled (port 8443) — `waf`, not `frontend`, terminates TLS since Security Phase 4. For proper PWA install without browser warnings, generate device-trusted certs using `mkcert` — the real certs silently override the placeholder via a Docker volume mount.
 
 ### Step 1: Generate trusted certificates
 
@@ -675,8 +688,8 @@ If automatic IP detection fails, pass it manually:
 
 ### Step 2: Place the certs
 
-`backend/supabase/docker-compose.yml`'s `frontend` service already mounts `../certs` (i.e.
-`backend/certs/`) to `/etc/nginx/certs` — no compose edit needed. Just make sure
+`backend/supabase/docker-compose.yml`'s `waf` service already mounts `../certs` (i.e.
+`backend/certs/`) to `/etc/caddy/certs` — no compose edit needed. Just make sure
 `generate-certs.ps1` wrote its output to `backend/certs/`.
 
 ### Step 3: Rebuild and restart
@@ -713,9 +726,14 @@ Once the cert is trusted, the PWA install button will appear in the sidebar.
                             └──────┬───────────────────────┘
                                    │
                         ┌──────────┴──────────┐
-                        │   nginx (docker)     │
+                        │   waf (docker)        │
                         │   :80  (HTTP)        │
                         │   :443 (HTTPS, mkcert)│
+                        │   Coraza/OWASP CRS    │
+                        └──────────┬──────────┘
+                                   │
+                        ┌──────────┴──────────┐
+                        │   nginx (internal)    │
                         └──────────┬──────────┘
                                    │ /rest/v1, /auth/v1, /realtime/v1, /functions/v1
                         ┌──────────┴──────────┐

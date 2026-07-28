@@ -43,7 +43,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | **I**nformation disclosure | Verbose error messages leaking stack traces / internals | Frontend error boundary, "generic error messages" convention | Phase 3 (shared fail-secure error wrapper for all Edge Functions) |
 | **I**nformation disclosure | Secrets committed to git or leaked via logs | `.env*` gitignored, Trivy secret scan in CI | Phase 5 (Infisical — no plaintext secrets on disk at all) |
 | **D**enial of service | Scripted abuse of write-heavy endpoints (mass record creation, finance entry spam) | None at Kong today | Phase 3 (Kong rate-limiting / anti-automation) |
-| **D**enial of service | Generic web attacks (SQLi/XSS scanners, known exploit signatures) | Cloudflare's free-tier WAF (`docs/SECURITY.md` "Network Security") | Phase 4 (Coraza/OWASP CRS as a self-hosted second layer, since Cloudflare's free tier has limited managed rules) |
+| **D**enial of service | Generic web attacks (SQLi/XSS scanners, known exploit signatures) | Cloudflare's free-tier WAF, plus Phase 4's self-hosted Coraza/OWASP CRS layer in front of nginx/Kong (`docs/SECURITY.md` "Network Security") | Closed |
 | **E**levation of privilege | A viewer/staff account attempting an admin-only action via direct API call | Server-side RLS on every table, `force row level security` set repo-wide | Phase 3 verifies this repo-wide as part of the DB hardening pass |
 | **E**levation of privilege | Compromised low-privilege account escalating via a stolen session | MFA required for admin/staff-with-flag, WebAuthn available | Phase 6 (mandatory face step-up once an account shows signs of a brute-force attempt, regardless of role) |
 

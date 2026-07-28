@@ -15,6 +15,10 @@
 # Every service below has a healthcheck — a real gap in the old PocketBase
 # compose file (backend/docker-compose.yml), which had none.
 #
+# Security Phase 4 added `waf` (../waf — a custom Caddy + Coraza/OWASP CRS
+# build) in front of `frontend`, taking over the 8080/8443 ports `frontend`
+# used to publish directly. See that service's own comment below.
+#
 # Run on any machine with a working Docker daemon (this sandbox has none —
 # see PHASE6_NOTES.md):
 #   cd backend/supabase
@@ -417,6 +421,10 @@ services:
   # deployment's own public origin (the frontend talks to Kong through this
   # same nginx, not directly), matching the existing smart-URL-resolution
   # design (docs/ARCHITECTURE.md "Smart URL Resolution") unchanged.
+  #
+  # No longer publishes 8080/8443 to the host (Security Phase 4) — `waf`
+  # below is now the public entry point and reaches this container over the
+  # internal compose network only, as `frontend:80`.
   frontend:
     build:
       context: ../../frontend
@@ -434,10 +442,34 @@ services:
         condition: service_healthy
       webauthn:
         condition: service_healthy
+    volumes: [ "../certs:/etc/nginx/certs" ]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OWASP Coraza WAF (Security Phase 4) — the stack's actual public entry
+  # point (ports 8080/8443, moved off `frontend` above). A custom Caddy
+  # build (../waf/Dockerfile) screens every request against the OWASP Core
+  # Rule Set before proxying whatever passes to `frontend:80`, which still
+  # fronts Kong for /auth|rest|realtime|functions/v1/* exactly as before —
+  # this is a second, self-hosted layer in front of that existing chain,
+  # not a replacement for it. Reuses the same ../certs volume (self-signed
+  # placeholder or mkcert, see docs/DEPLOYMENT.md) frontend used to mount,
+  # since it — not frontend — now terminates the deployment's real TLS.
+  waf:
+    build:
+      context: ../waf
+    container_name: barangay-waf
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
     ports:
       - "8080:80"
       - "8443:443"
-    volumes: [ "../certs:/etc/nginx/certs" ]
+    volumes: [ "../certs:/etc/caddy/certs" ]
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
       interval: 10s
