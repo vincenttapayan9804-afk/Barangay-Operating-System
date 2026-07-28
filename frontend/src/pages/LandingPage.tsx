@@ -309,7 +309,7 @@ const aboutValues = [
 const faqs = [
   {
     q: 'What exactly is CLUSTR?',
-    a: 'CLUSTR is an enterprise-grade barangay operating system — a single platform for resident records, document requests, blotter cases, finance, and day-to-day office operations, built specifically for how Philippine barangays actually work.',
+    a: 'CLUSTR is an Enterprise-Grade Local Governance System — a single platform for resident records, document requests, blotter cases, finance, and day-to-day office operations, built specifically for how Philippine barangays actually work.',
   },
   {
     q: 'Can CLUSTR serve more than one barangay?',
@@ -865,7 +865,7 @@ function DownloadAppButton() {
                   <ClustrMark className="size-14 shrink-0" />
                   <div>
                     <p className="font-display text-base font-semibold text-white">CLUSTR</p>
-                    <p className="font-display text-xs text-white/50">Barangay Operating System</p>
+                    <p className="font-display text-xs text-white/50">Enterprise-Grade Local Governance System</p>
                   </div>
                 </div>
 
@@ -989,7 +989,7 @@ export default function LandingPage() {
               transition={{ duration: 0.6, delay: 0.1 }}
               className="mt-6 font-display text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]"
             >
-              One Operating System,
+              One Governance System,
               <br />
               Every Barangay <span className="text-mint">Connected</span>
             </motion.h1>
@@ -1144,7 +1144,7 @@ export default function LandingPage() {
             <p className="mt-5 font-display text-base leading-relaxed text-muted-foreground">
               CLUSTR started as a straightforward question: why should every barangay office run on
               a different stack of spreadsheets, paper logs, and disconnected tools? CLUSTR is a
-              single, multi-tenant operating system that any number of barangays can run on —
+              single, multi-tenant Local Governance System that any number of barangays can run on —
               each with its own fully isolated workspace — instead of standing up separate,
               redundant systems one office at a time.
             </p>
@@ -1408,16 +1408,117 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-border">
-        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8">
-          <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
+      <footer className="border-t border-border bg-paper">
+        <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
+          <div className="flex flex-col items-center gap-2 text-center sm:items-start sm:text-left">
+            <div className="flex items-center gap-2.5">
               <ClustrMark className="size-7" />
               <span className="font-display text-sm font-semibold text-foreground">CLUSTR</span>
-              <span className="font-display text-sm text-muted-foreground">
-                &middot; Made for every Barangay in the Philippines
-              </span>
             </div>
+            <p className="font-display text-sm text-muted-foreground">
+              An Enterprise-Grade Local Governance System, made for every Barangay in the Philippines.
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-10 border-y border-border py-10 lg:grid-cols-2 lg:gap-16">
+            {/* Resident-focused trust elements */}
+            <div>
+              <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+                Built for Resident Trust
+              </p>
+              <ul className="mt-5 space-y-4">
+                {[
+                  {
+                    icon: Lock,
+                    title: 'Protected Under RA 10173',
+                    detail: 'Your records are safeguarded under the Philippine Data Privacy Act, backed by a published Privacy Notice and Data Processing Agreement.',
+                  },
+                  {
+                    icon: Building2,
+                    title: "Your Barangay's Data, Isolated",
+                    detail: "Database-enforced multi-tenancy means no other barangay can ever see your residents' records — verified by automated isolation tests.",
+                  },
+                  {
+                    icon: ScrollText,
+                    title: 'Every Action, Tamper-Evident',
+                    detail: 'Sensitive records and finance entries are SHA-256 hash-chained — any silent edit to history is detectable, not just logged.',
+                  },
+                  {
+                    icon: WifiOff,
+                    title: 'Always Available, Even Offline',
+                    detail: "Frontline staff keep serving residents through outages — entries sync automatically the moment connectivity returns.",
+                  },
+                ].map((item) => (
+                  <li key={item.title} className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+                      <item.icon className="size-4" />
+                    </span>
+                    <span>
+                      <p className="font-display text-sm font-semibold text-foreground">{item.title}</p>
+                      <p className="mt-0.5 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Technical governance metrics, for auditors */}
+            <div>
+              <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+                For Auditors &amp; IT Governance
+              </p>
+              <ul className="mt-5 space-y-4">
+                {[
+                  {
+                    icon: ListChecks,
+                    title: '9 Compliance Frameworks Mapped',
+                    detail: 'OWASP ASVS, NIST CSF, CIS Controls v8, DICT SDLC, and more — self-assessed and published in the open.',
+                    href: `${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`,
+                  },
+                  {
+                    icon: Shield,
+                    title: 'Row-Level Security on Every Table',
+                    detail: 'Every tenant-scoped table enforces database-level row security — not bypassable, even by the table owner.',
+                    href: `${REPO_URL}/blob/main/docs/THREAT_MODEL.md`,
+                  },
+                  {
+                    icon: ClipboardCheck,
+                    title: 'Trivy + Semgrep on Every CI Build',
+                    detail: 'Container, dependency, and static-analysis security scanning runs on every push and pull request.',
+                    href: `${REPO_URL}/blob/main/docs/SECURITY.md`,
+                  },
+                  {
+                    icon: Boxes,
+                    title: 'SBOM Generated on Every Release',
+                    detail: 'A CycloneDX Software Bill of Materials and license-compliance gate ship with every build.',
+                    href: `${REPO_URL}/blob/main/.github/workflows/ci.yml`,
+                  },
+                ].map((item) => (
+                  <li key={item.title} className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+                      <item.icon className="size-4" />
+                    </span>
+                    <span>
+                      <a
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-display text-sm font-semibold text-foreground underline decoration-transparent transition-colors hover:decoration-current"
+                      >
+                        {item.title}
+                      </a>
+                      <p className="mt-0.5 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <p className="font-display text-xs text-muted-foreground">
+              &copy; {new Date().getFullYear()} CLUSTR. All Rights Reserved.
+            </p>
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-display text-xs text-muted-foreground">
               <a
                 href={`${REPO_URL}/blob/main/docs/PRIVACY_NOTICE.md`}
@@ -1442,6 +1543,14 @@ export default function LandingPage() {
                 className="underline decoration-transparent transition-colors hover:text-foreground hover:decoration-current"
               >
                 DPA
+              </a>
+              <a
+                href={`${REPO_URL}/blob/main/docs/SECURITY.md`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-transparent transition-colors hover:text-foreground hover:decoration-current"
+              >
+                Security Policy
               </a>
             </div>
           </div>
