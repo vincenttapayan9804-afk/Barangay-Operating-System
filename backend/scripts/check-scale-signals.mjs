@@ -34,7 +34,7 @@
 // wave) — not on every request; it's a health check, not telemetry.
 //
 // Requires the `psql` CLI on PATH (already a prerequisite for this repo's
-// backend/supabase/verify/*.sql and zzz-init-migrations.sh) and a DATABASE_URL
+// backend/supabase/verify/*.sql) and a DATABASE_URL
 // with rights to read pg_stat_statements/pg_stat_activity — the `postgres`
 // superuser role, or a role granted pg_read_all_stats.
 //
