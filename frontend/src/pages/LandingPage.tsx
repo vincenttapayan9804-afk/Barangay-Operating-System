@@ -326,30 +326,53 @@ const features = [
   },
 ]
 
-const pillars = [
-  {
-    icon: Zap,
-    title: 'Operational Efficiency',
-    description:
-      'Replace manual searching, redundant data entry, and paper-based approvals with structured digital workflows built for daily barangay operations.',
-  },
+const residentTrustItems = [
   {
     icon: Lock,
-    title: 'Privacy & Compliance',
-    description:
-      'Designed with the Data Privacy Act (RA 10173) in mind — role-based access, audit logging, and a published privacy notice and data processing agreement.',
-  },
-  {
-    icon: WifiOff,
-    title: 'Built for Real Connectivity',
-    description:
-      'Intermittent internet is the norm in many barangays. CLUSTR queues changes offline and syncs automatically — no workflow interruption.',
+    title: 'Protected Under RA 10173',
+    detail: 'Your records are safeguarded under the Philippine Data Privacy Act, backed by a published Privacy Notice and Data Processing Agreement.',
   },
   {
     icon: Building2,
-    title: 'Multi-Tenant by Design',
-    description:
-      'One platform, many barangays — each with data the others can never see, enforced at the database layer and covered by automated isolation tests.',
+    title: "Your Barangay's Data, Isolated",
+    detail: "Database-enforced multi-tenancy means no other barangay can ever see your residents' records — verified by automated isolation tests.",
+  },
+  {
+    icon: ScrollText,
+    title: 'Every Action, Tamper-Evident',
+    detail: 'Sensitive records and finance entries are SHA-256 hash-chained — any silent edit to history is detectable, not just logged.',
+  },
+  {
+    icon: WifiOff,
+    title: 'Always Available, Even Offline',
+    detail: "Frontline staff keep serving residents through outages — entries sync automatically the moment connectivity returns.",
+  },
+]
+
+const auditorGovernanceItems = [
+  {
+    icon: ListChecks,
+    title: '9 Compliance Frameworks Mapped',
+    detail: 'OWASP ASVS, NIST CSF, CIS Controls v8, DICT SDLC, and more — self-assessed and published in the open.',
+    href: `${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`,
+  },
+  {
+    icon: Shield,
+    title: 'Row-Level Security on Every Table',
+    detail: 'Every tenant-scoped table enforces database-level row security — not bypassable, even by the table owner.',
+    href: `${REPO_URL}/blob/main/docs/THREAT_MODEL.md`,
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'Trivy + Semgrep on Every CI Build',
+    detail: 'Container, dependency, and static-analysis security scanning runs on every push and pull request.',
+    href: `${REPO_URL}/blob/main/docs/SECURITY.md`,
+  },
+  {
+    icon: Boxes,
+    title: 'SBOM Generated on Every Release',
+    detail: 'A CycloneDX Software Bill of Materials and license-compliance gate ship with every build.',
+    href: `${REPO_URL}/blob/main/.github/workflows/ci.yml`,
   },
 ]
 
@@ -1318,7 +1341,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Why CLUSTR / pillars ── */}
+      {/* ── Why CLUSTR / resident trust & auditor governance ── */}
       <section id="platform" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
@@ -1327,24 +1350,56 @@ export default function LandingPage() {
           <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Designed Around How Barangays Actually Work
           </h2>
+          <p className="mt-4 font-display text-base text-muted-foreground">
+            Built for the residents whose data it holds, and verifiable by the auditors who oversee it.
+          </p>
         </Reveal>
 
-        <div className="mt-16 grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {pillars.map(({ icon: Icon, title, description }, i) => (
-            <Reveal key={title} delay={i * 0.08}>
-              <div className="flex h-full gap-5 rounded-2xl border border-border bg-card p-7 shadow-sm">
-                <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-mint to-mint-deep text-ink">
-                  <Icon className="size-5" />
-                </div>
-                <div>
-                  <h3 className="font-display text-base font-semibold text-foreground">{title}</h3>
-                  <p className="mt-2 font-display text-sm leading-relaxed text-muted-foreground">
-                    {description}
-                  </p>
-                </div>
-              </div>
-            </Reveal>
-          ))}
+        <div className="mt-16 grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-x-16">
+          <Reveal>
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+              Built for Resident Trust
+            </p>
+            <ul className="mt-6 space-y-5">
+              {residentTrustItems.map((item) => (
+                <li key={item.title} className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+                    <item.icon className="size-4.5" />
+                  </span>
+                  <span>
+                    <p className="font-display text-sm font-semibold text-foreground">{item.title}</p>
+                    <p className="mt-1 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+              For Auditors &amp; IT Governance
+            </p>
+            <ul className="mt-6 space-y-5">
+              {auditorGovernanceItems.map((item) => (
+                <li key={item.title} className="flex items-start gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
+                    <item.icon className="size-4.5" />
+                  </span>
+                  <span>
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-display text-sm font-semibold text-foreground underline decoration-transparent transition-colors hover:decoration-current"
+                    >
+                      {item.title}
+                    </a>
+                    <p className="mt-1 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
         </div>
       </section>
 
@@ -1554,102 +1609,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="mt-12 grid grid-cols-1 gap-10 border-y border-border py-10 lg:grid-cols-2 lg:gap-16">
-            {/* Resident-focused trust elements */}
-            <div>
-              <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
-                Built for Resident Trust
-              </p>
-              <ul className="mt-5 space-y-4">
-                {[
-                  {
-                    icon: Lock,
-                    title: 'Protected Under RA 10173',
-                    detail: 'Your records are safeguarded under the Philippine Data Privacy Act, backed by a published Privacy Notice and Data Processing Agreement.',
-                  },
-                  {
-                    icon: Building2,
-                    title: "Your Barangay's Data, Isolated",
-                    detail: "Database-enforced multi-tenancy means no other barangay can ever see your residents' records — verified by automated isolation tests.",
-                  },
-                  {
-                    icon: ScrollText,
-                    title: 'Every Action, Tamper-Evident',
-                    detail: 'Sensitive records and finance entries are SHA-256 hash-chained — any silent edit to history is detectable, not just logged.',
-                  },
-                  {
-                    icon: WifiOff,
-                    title: 'Always Available, Even Offline',
-                    detail: "Frontline staff keep serving residents through outages — entries sync automatically the moment connectivity returns.",
-                  },
-                ].map((item) => (
-                  <li key={item.title} className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                      <item.icon className="size-4" />
-                    </span>
-                    <span>
-                      <p className="font-display text-sm font-semibold text-foreground">{item.title}</p>
-                      <p className="mt-0.5 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Technical governance metrics, for auditors */}
-            <div>
-              <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
-                For Auditors &amp; IT Governance
-              </p>
-              <ul className="mt-5 space-y-4">
-                {[
-                  {
-                    icon: ListChecks,
-                    title: '9 Compliance Frameworks Mapped',
-                    detail: 'OWASP ASVS, NIST CSF, CIS Controls v8, DICT SDLC, and more — self-assessed and published in the open.',
-                    href: `${REPO_URL}/blob/main/docs/COMPLIANCE_MAPPING.md`,
-                  },
-                  {
-                    icon: Shield,
-                    title: 'Row-Level Security on Every Table',
-                    detail: 'Every tenant-scoped table enforces database-level row security — not bypassable, even by the table owner.',
-                    href: `${REPO_URL}/blob/main/docs/THREAT_MODEL.md`,
-                  },
-                  {
-                    icon: ClipboardCheck,
-                    title: 'Trivy + Semgrep on Every CI Build',
-                    detail: 'Container, dependency, and static-analysis security scanning runs on every push and pull request.',
-                    href: `${REPO_URL}/blob/main/docs/SECURITY.md`,
-                  },
-                  {
-                    icon: Boxes,
-                    title: 'SBOM Generated on Every Release',
-                    detail: 'A CycloneDX Software Bill of Materials and license-compliance gate ship with every build.',
-                    href: `${REPO_URL}/blob/main/.github/workflows/ci.yml`,
-                  },
-                ].map((item) => (
-                  <li key={item.title} className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint/10 text-mint-deep dark:bg-mint/15 dark:text-mint">
-                      <item.icon className="size-4" />
-                    </span>
-                    <span>
-                      <a
-                        href={item.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-display text-sm font-semibold text-foreground underline decoration-transparent transition-colors hover:decoration-current"
-                      >
-                        {item.title}
-                      </a>
-                      <p className="mt-0.5 font-display text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
+          <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
             <p className="font-display text-xs text-muted-foreground">
               &copy; {new Date().getFullYear()} CLUSTR. All Rights Reserved.
             </p>
