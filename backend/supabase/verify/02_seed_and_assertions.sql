@@ -755,3 +755,148 @@ begin
 end $$;
 
 do $$ begin raise notice '=== ALL SECURITY PHASE 6 BIOMETRIC STEP-UP ASSERTIONS PASSED ==='; end $$;
+
+-- ---------------------------------------------------------------------
+-- Security Phase 7: document_release_chain tamper-evidence
+-- (0034_document_release_chain.sql). Reuses the chain-test tenant/admin/
+-- staff identities from the Phase 3 block above. Releases two documents in
+-- sequence (via UPDATE, the same path ReleasePage's handleRelease() takes)
+-- to prove chain linkage, then tampers with the *first* released
+-- document's document_requests row directly (as postgres, simulating a
+-- DB-level attacker) and proves both the admin-only full-chain RPC and the
+-- anon-callable single-document RPC catch it -- without the second,
+-- untouched document's own status flipping to invalid.
+-- ---------------------------------------------------------------------
+insert into public.residents (barangay_id, first_name, last_name, type_of_resident, date_of_birth, place_of_birth, sex, civil_status, region, province, city_municipality, barangay, nationality, religion) values
+  ('33333333-3333-3333-3333-333333333333','Chain','DocOne','Non-migrant','1991-01-01','Manila','Male','Single/Never Married','NCR','Metro Manila','Manila','Barangay Chain Test','Filipino Citizen','Roman Catholic'),
+  ('33333333-3333-3333-3333-333333333333','Chain','DocTwo','Non-migrant','1993-03-03','Manila','Female','Single/Never Married','NCR','Metro Manila','Manila','Barangay Chain Test','Filipino Citizen','Roman Catholic');
+
+insert into public.document_requests (id, barangay_id, queue_number, resident_id, resident_name, document_type, purpose, status, barangay_name)
+select '00000000-0000-0000-0007-000000000001', '33333333-3333-3333-3333-333333333333', 'Q-C001', id, 'Chain DocOne', 'barangay_clearance', 'Employment', 'pending', 'Barangay Chain Test'
+from public.residents where first_name = 'Chain' and last_name = 'DocOne';
+
+insert into public.document_requests (id, barangay_id, queue_number, resident_id, resident_name, document_type, purpose, status, barangay_name)
+select '00000000-0000-0000-0007-000000000002', '33333333-3333-3333-3333-333333333333', 'Q-C002', id, 'Chain DocTwo', 'certificate_of_residency', 'Travel', 'pending', 'Barangay Chain Test'
+from public.residents where first_name = 'Chain' and last_name = 'DocTwo';
+
+-- Release doc 1, then doc 2 -- same UPDATE ... status='released' path the
+-- app's ReleasePage.handleRelease() takes, firing the release-chain trigger.
+update public.document_requests set status = 'released', released_at = now(), received_by = 'Chain DocOne'
+  where id = '00000000-0000-0000-0007-000000000001';
+update public.document_requests set status = 'released', released_at = now(), received_by = 'Chain DocTwo'
+  where id = '00000000-0000-0000-0007-000000000002';
+
+do $$
+declare cnt int;
+begin
+  select count(*) into cnt from public.document_release_chain where barangay_id = '33333333-3333-3333-3333-333333333333';
+  perform app.verify_assert('document_release_chain: one row inserted per release', cnt::text, '2');
+end $$;
+
+do $$
+declare v_doc1_hash text; v_doc2_prev text;
+begin
+  select row_hash into v_doc1_hash from public.document_release_chain where document_request_id = '00000000-0000-0000-0007-000000000001';
+  select prev_hash into v_doc2_prev from public.document_release_chain where document_request_id = '00000000-0000-0000-0007-000000000002';
+  perform app.verify_assert('document_release_chain: second release chains to the first''s hash', v_doc2_prev, v_doc1_hash);
+end $$;
+
+do $$
+declare rec record; claims jsonb; all_valid boolean := true; n int := 0;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000001') into claims; -- chain admin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  for rec in select * from public.verify_document_release_chain('33333333-3333-3333-3333-333333333333') loop
+    n := n + 1;
+    if not rec.valid then all_valid := false; end if;
+  end loop;
+  reset role;
+  perform app.verify_assert('document_release_chain: row count before tampering', n::text, '2');
+  perform app.verify_assert('document_release_chain: valid before tampering', all_valid::text, 'true');
+end $$;
+
+-- Simulate a DB-level attacker mutating the released document directly
+-- (not through the release trigger, which only fires on the
+-- pending->released transition) -- the stored chain hash no longer matches
+-- what's now in document_requests.
+update public.document_requests set resident_name = 'TAMPERED'
+  where id = '00000000-0000-0000-0007-000000000001';
+
+do $$
+declare rec record; claims jsonb; doc1_valid boolean; doc2_valid boolean;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000001') into claims; -- chain admin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  for rec in select * from public.verify_document_release_chain('33333333-3333-3333-3333-333333333333') loop
+    if rec.document_request_id = '00000000-0000-0000-0007-000000000001' then doc1_valid := rec.valid; end if;
+    if rec.document_request_id = '00000000-0000-0000-0007-000000000002' then doc2_valid := rec.valid; end if;
+  end loop;
+  reset role;
+  perform app.verify_assert('document_release_chain: tampered document flagged invalid', doc1_valid::text, 'false');
+  perform app.verify_assert('document_release_chain: untouched later release still valid', doc2_valid::text, 'true');
+end $$;
+
+do $$
+declare claims jsonb; threw boolean := false;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000002') into claims; -- chain staff (not admin)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    perform * from public.verify_document_release_chain('33333333-3333-3333-3333-333333333333');
+  exception when others then
+    threw := true;
+  end;
+  reset role;
+  perform app.verify_assert('document_release_chain: verify RPC denied to non-admin', threw::text, 'true');
+end $$;
+
+-- Public, single-document check (anon) -- mirrors get_public_document's
+-- own anon-visibility tests above.
+do $$
+declare rec record;
+begin
+  set local role anon;
+  select * into rec from public.get_public_document_chain_status('00000000-0000-0000-0007-000000000001');
+  reset role;
+  perform app.verify_assert('get_public_document_chain_status: tampered document reports chain_verified=false to anon', rec.chain_verified::text, 'false');
+end $$;
+
+do $$
+declare rec record;
+begin
+  set local role anon;
+  select * into rec from public.get_public_document_chain_status('00000000-0000-0000-0007-000000000002');
+  reset role;
+  perform app.verify_assert('get_public_document_chain_status: untouched document reports chain_verified=true to anon', rec.chain_verified::text, 'true');
+end $$;
+
+do $$
+declare cnt int;
+begin
+  set local role anon;
+  select count(*) into cnt from public.get_public_document_chain_status('00000000-0000-0000-0002-000000000002'); -- pending doc from the Phase 1 seed, never released
+  reset role;
+  perform app.verify_assert('get_public_document_chain_status: never-released document returns no row', cnt::text, '0');
+end $$;
+
+do $$
+declare claims jsonb; threw boolean := false;
+begin
+  select app.verify_claims_for('d0000000-0000-0000-0000-000000000002') into claims; -- chain staff
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    insert into public.document_release_chain (document_request_id, barangay_id, row_hash)
+      values ('00000000-0000-0000-0007-000000000002', '33333333-3333-3333-3333-333333333333', 'forged');
+    raise exception 'FAIL document_release_chain: authenticated insert should have been denied';
+  exception when insufficient_privilege then
+    threw := true;
+  end;
+  reset role;
+  perform app.verify_assert('document_release_chain: authenticated insert denied (trigger-only writes)', threw::text, 'true');
+end $$;
+
+do $$ begin raise notice '=== ALL SECURITY PHASE 7 DOCUMENT TAMPER-EVIDENCE ASSERTIONS PASSED ==='; end $$;

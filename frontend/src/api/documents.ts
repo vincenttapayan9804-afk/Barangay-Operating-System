@@ -62,6 +62,15 @@ export interface PublicDocumentVerification {
   status: string
   released_at: string
   barangay_name: string
+  /**
+   * Security Phase 7 tamper-evidence: whether this document's release
+   * snapshot still matches the hash recorded the moment it was released
+   * (public.document_release_chain, via get_public_document_chain_status).
+   * `undefined` means the check itself couldn't run (e.g. demo mode, or an
+   * older release predating this phase) -- not the same as a failed check.
+   */
+  chain_verified?: boolean
+  chain_recorded_at?: string
 }
 
 export async function getDocuments(): Promise<ApiDocument[]> {
@@ -141,13 +150,30 @@ export async function getDocumentForVerification(id: string): Promise<PublicDocu
         status: doc.status,
         released_at: doc.released_at,
         barangay_name: doc.barangay_name,
+        // No real hash chain in browser-only demo mode -- nothing to tamper-check against.
+        chain_verified: true,
+        chain_recorded_at: doc.released_at,
       }
     }
 
     const { data, error } = await getSupabase().rpc('get_public_document', { doc_id: id })
     if (error) throw error
     const row = Array.isArray(data) ? data[0] : data
-    return row ?? null
+    if (!row) return null
+
+    let chain: { chain_verified?: boolean; chain_recorded_at?: string } | null = null
+    try {
+      const { data: chainData } = await getSupabase().rpc('get_public_document_chain_status', { p_document_request_id: id })
+      chain = Array.isArray(chainData) ? chainData[0] : chainData
+    } catch {
+      chain = null
+    }
+
+    return {
+      ...row,
+      chain_verified: chain?.chain_verified ?? undefined,
+      chain_recorded_at: chain?.chain_recorded_at ?? undefined,
+    }
   } catch {
     return null
   }

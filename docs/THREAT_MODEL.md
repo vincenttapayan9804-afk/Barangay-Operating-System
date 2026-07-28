@@ -14,7 +14,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | Credentials & session tokens | GoTrue (`auth.users`), browser localStorage, WebAuthn credentials (`webauthn_credentials`) | Critical |
 | Service secrets (JWT signing key, service-role key, DB password) | Self-hosted Infisical (`backend/infisical/`), rendered into `backend/supabase/.env` at deploy time (Phase 5) | Critical |
 | Audit trail (`activity_logs`, `finance_audit_logs`) | Postgres | High — must be tamper-evident (Phase 3) |
-| Released documents (clearances, certificates) | Generated PDFs + `document_requests` | Medium — forgeable if verification is weak (Phase 7) |
+| Released documents (clearances, certificates) | Generated PDFs + `document_requests`, hash-chained release events in `document_release_chain` (Phase 7) | Medium — forgeable if verification is weak |
 | Face templates (biometric data) | CompreFace's own store only (`backend/compreface/`), keyed by subject = user id; never this Postgres database | Critical — biometric data is irrevocable if leaked, unlike a password |
 
 ## Trust boundaries
@@ -40,7 +40,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | Category | Threat | Existing mitigation | Gap addressed by this roadmap |
 |---|---|---|---|
 | **S**poofing | Credential stuffing / brute force against login | GoTrue rate-limit env vars, nginx `auth_limit` zone, Kong-level rate limiting (Phase 3) | Closed — Phase 6's `login-gate` Edge Function proxies the password grant server-side to count failures authoritatively, and requires a CompreFace face match on the next login once an account hits 3 failures, regardless of whether the password given is correct |
-| **S**poofing | Forged/reused document certificates | QR code + `/verify/:id` lookup | Phase 7 (hash-chained tamper-evidence) |
+| **S**poofing | Forged/reused document certificates | QR code + `/verify/:id` lookup | Closed — Phase 7 chains each release event's snapshot (`document_release_chain`, same SHA-256 technique as Phase 3) and `/verify/:id` now shows a "tamper-evident, chain verified" badge, recomputed live rather than just displayed |
 | **T**ampering | Historical audit-log rows edited directly in Postgres (e.g. by a compromised service-role key) | RLS denies UPDATE/DELETE on `activity_logs`/`finance_audit_logs` | Phase 3 (hash-chain makes tampering *detectable*, not just policy-denied) |
 | **T**ampering | Unsigned Cloudinary upload preset lets anyone upload arbitrary files under the app's account | None today | Phase 3 (signed uploads or Supabase Storage + bucket RLS) |
 | **R**epudiation | A user denies performing a destructive action | `activity_logs`/`finance_audit_logs` record user attribution | Phase 3 hash-chain strengthens non-repudiation |
