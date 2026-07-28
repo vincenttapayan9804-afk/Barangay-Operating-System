@@ -646,6 +646,48 @@ turns it on for a specific barangay from `/platform-admin` → find the barangay
 toggle. Once enabled, every staff login in that barangay requires the same TOTP enrollment/
 verification as admins.
 
+### Biometric Step-Up Authentication (CompreFace)
+
+Optional, but a real fail-closed control once enabled (see "What happens if you don't set this
+up" below) — a self-hosted [CompreFace](https://github.com/exadel-inc/CompreFace) instance backs
+a face-verification step-up that `backend/supabase/functions/login-gate` requires after 3 failed
+sign-in attempts on an account, regardless of role (admin/staff/viewer) or whether the *next*
+password given is correct.
+
+1. Stand up CompreFace, a separate compose project from `backend/supabase/` (same reasoning as
+   Infisical above — it has its own bootstrapping order):
+   ```bash
+   docker network create compreface_net   # shared with backend/supabase's edge-runtime
+   cd backend/compreface
+   cp .env.example .env   # fill in POSTGRES_PASSWORD, ADMIN_SECRET
+   docker compose up -d
+   ```
+2. Visit `http://<this host>:8010` (loopback-only by default — reach it via SSH tunnel/VPN for a
+   remote host, same as Infisical's admin UI), create an account, an Application, and a
+   **Recognition** service inside it.
+3. Copy that Recognition service's own API key (not the account/admin login) into
+   `backend/supabase/.env`:
+   ```bash
+   COMPREFACE_URL=http://compreface-api:8080
+   COMPREFACE_API_KEY=<the Recognition service's API key>
+   COMPREFACE_SIMILARITY_THRESHOLD=0.92
+   ```
+4. `docker compose up -d --build edge-runtime` (it now joins `compreface_net` alongside its usual
+   network — see `backend/supabase/docker-compose.yml`'s `networks:` block).
+5. Every account should enroll a face template from Settings → Face Verification *before* it's
+   ever needed — onboarding, not an afterthought. An account with no enrolled template that later
+   hits the 3-failed-attempt threshold fails closed (soft-locked, HTTP 423) instead of silently
+   skipping the check; an admin clears the lock from Settings' "Locked Accounts" panel.
+
+**What happens if you don't set this up:** `COMPREFACE_API_KEY` is left blank by default —
+`enroll-face` fails closed (503) for every enrollment attempt, so no account ever has a face
+template on file. `login-gate` still counts failed attempts authoritatively either way, so every
+account that hits the 3-failed-attempt threshold ends up soft-locked (HTTP 423, "none enrolled")
+rather than silently skipping the check — an admin has to clear it from Settings' "Locked Accounts"
+panel each time. In other words, leaving this unconfigured turns "3 failed attempts" into a full
+lockout for every account, not a bypassed check — deploy CompreFace before real users hit that
+threshold, not after.
+
 ### Email notifications (document status, hearing scheduled)
 
 Residents with an email on file (`residents.email_address`) get an automatic email when their
