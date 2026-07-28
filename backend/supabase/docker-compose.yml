@@ -45,6 +45,16 @@ services:
     # silently break the realtime service's postgres_changes subscriptions.
     command:
       - postgres
+      # supabase/postgres's own default CMD is `postgres -D /etc/postgresql`
+      # -- that config file is what sets listen_addresses (to all
+      # interfaces, not just loopback) and shared_preload_libraries (incl.
+      # pg_stat_statements). Overriding `command:` at all replaces that
+      # default entirely, so -D must be repeated here or db silently falls
+      # back to a bare/vanilla config generated inside $PGDATA: other
+      # containers can never reach it (loopback-only) and
+      # extensions.pg_stat_statements_reset() doesn't exist.
+      - -D
+      - /etc/postgresql
       - -c
       - archive_mode=on
       - -c
