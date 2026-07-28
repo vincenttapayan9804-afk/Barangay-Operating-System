@@ -54,7 +54,7 @@ const en = {
   'settings.language.description': 'Choose the language used across the dashboard menu and sign-in screen.',
 
   // Login page
-  'login.tagline': 'An Enterprise-Grade Barangay Operating System',
+  'login.tagline': 'An Enterprise-Grade Local Governance System',
   'login.greeting.morning': 'Good Morning',
   'login.greeting.afternoon': 'Good Afternoon',
   'login.greeting.evening': 'Good Evening',
@@ -128,7 +128,7 @@ const tl: Record<TranslationKey, string> = {
   'settings.language.title': 'Wika',
   'settings.language.description': 'Piliin ang wikang gagamitin sa menu ng dashboard at sa login screen.',
 
-  'login.tagline': 'Isang Antas-Enterprise na Sistema ng Operasyon ng Barangay',
+  'login.tagline': 'Isang Antas-Enterprise na Sistema ng Lokal na Pamamahala',
   'login.greeting.morning': 'Magandang Umaga',
   'login.greeting.afternoon': 'Magandang Hapon',
   'login.greeting.evening': 'Magandang Gabi',
@@ -198,7 +198,7 @@ const ceb: Record<TranslationKey, string> = {
   'settings.language.title': 'Pinulongan',
   'settings.language.description': 'Pilia ang pinulongan nga gamiton sa menu sa dashboard ug sa login screen.',
 
-  'login.tagline': 'Usa ka Enterprise-Grade nga Sistema sa Operasyon sa Barangay',
+  'login.tagline': 'Usa ka Enterprise-Grade nga Sistema sa Lokal nga Panggamhanan',
   'login.greeting.morning': 'Maayong Buntag',
   'login.greeting.afternoon': 'Maayong Hapon',
   'login.greeting.evening': 'Maayong Gabii',

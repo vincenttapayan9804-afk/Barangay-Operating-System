@@ -309,7 +309,7 @@ const aboutValues = [
 const faqs = [
   {
     q: 'What exactly is CLUSTR?',
-    a: 'CLUSTR is an enterprise-grade barangay operating system — a single platform for resident records, document requests, blotter cases, finance, and day-to-day office operations, built specifically for how Philippine barangays actually work.',
+    a: 'CLUSTR is an Enterprise-Grade Local Governance System — a single platform for resident records, document requests, blotter cases, finance, and day-to-day office operations, built specifically for how Philippine barangays actually work.',
   },
   {
     q: 'Can CLUSTR serve more than one barangay?',
@@ -865,7 +865,7 @@ function DownloadAppButton() {
                   <ClustrMark className="size-14 shrink-0" />
                   <div>
                     <p className="font-display text-base font-semibold text-white">CLUSTR</p>
-                    <p className="font-display text-xs text-white/50">Barangay Operating System</p>
+                    <p className="font-display text-xs text-white/50">Enterprise-Grade Local Governance System</p>
                   </div>
                 </div>
 
@@ -989,7 +989,7 @@ export default function LandingPage() {
               transition={{ duration: 0.6, delay: 0.1 }}
               className="mt-6 font-display text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]"
             >
-              One Operating System,
+              One Governance System,
               <br />
               Every Barangay <span className="text-mint">Connected</span>
             </motion.h1>
@@ -1144,7 +1144,7 @@ export default function LandingPage() {
             <p className="mt-5 font-display text-base leading-relaxed text-muted-foreground">
               CLUSTR started as a straightforward question: why should every barangay office run on
               a different stack of spreadsheets, paper logs, and disconnected tools? CLUSTR is a
-              single, multi-tenant operating system that any number of barangays can run on —
+              single, multi-tenant Local Governance System that any number of barangays can run on —
               each with its own fully isolated workspace — instead of standing up separate,
               redundant systems one office at a time.
             </p>
