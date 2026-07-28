@@ -610,3 +610,148 @@ begin
 end $$;
 
 do $$ begin raise notice '=== ALL SECURITY PHASE 3 HASH-CHAIN ASSERTIONS PASSED ==='; end $$;
+
+-- ---------------------------------------------------------------------
+-- Security Phase 6: login_attempts / face_enrollments (own-row-or-
+-- same-barangay-admin select, service-role-only writes except the admin
+-- unlock update) and login_face_challenges (no client access at all).
+-- ---------------------------------------------------------------------
+insert into public.login_attempts (user_id, barangay_id, failed_count, locked_at) values
+  ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 3, now());
+
+insert into public.face_enrollments (user_id, barangay_id) values
+  ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111');
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002') into claims; -- staff A (owner)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.login_attempts;
+  reset role;
+  perform app.verify_assert('login_attempts: owner sees own lockout row', cnt::text, '1');
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('b0000000-0000-0000-0000-000000000001') into claims; -- staff B (different tenant)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.login_attempts;
+  reset role;
+  perform app.verify_assert('login_attempts: other-tenant non-admin sees zero', cnt::text, '0');
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000001') into claims; -- admin A (same tenant, not the owner)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.login_attempts;
+  reset role;
+  perform app.verify_assert('login_attempts: same-barangay admin sees the lockout row', cnt::text, '1');
+end $$;
+
+do $$
+declare claims jsonb; locked_after timestamptz;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000001') into claims; -- admin A
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  update public.login_attempts set failed_count = 0, locked_at = null
+    where user_id = 'a0000000-0000-0000-0000-000000000002';
+  reset role;
+  select locked_at into locked_after from public.login_attempts where user_id = 'a0000000-0000-0000-0000-000000000002';
+  perform app.verify_assert('login_attempts: same-barangay admin can unlock', (locked_after is null)::text, 'true');
+end $$;
+
+do $$
+declare claims jsonb;
+begin
+  select app.verify_claims_for('b0000000-0000-0000-0000-000000000001') into claims; -- staff B (different tenant, not admin)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    update public.login_attempts set failed_count = 0, locked_at = null
+      where user_id = 'a0000000-0000-0000-0000-000000000002';
+    if not found then
+      raise notice 'PASS login_attempts: cross-tenant non-admin unlock is a no-op (RLS filters the row, not an error)';
+    else
+      raise exception 'FAIL login_attempts: cross-tenant non-admin should not be able to unlock another barangay''s row';
+    end if;
+  end;
+  reset role;
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002') into claims; -- staff A (owner)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.face_enrollments;
+  reset role;
+  perform app.verify_assert('face_enrollments: owner sees own enrollment', cnt::text, '1');
+end $$;
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000003') into claims; -- staff A2 (not owner, same tenant)
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.face_enrollments;
+  reset role;
+  perform app.verify_assert('face_enrollments: same-tenant non-owner/non-admin sees zero', cnt::text, '0');
+end $$;
+
+do $$
+declare claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002') into claims; -- staff A
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    insert into public.face_enrollments (user_id, barangay_id)
+      values ('a0000000-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111');
+    raise exception 'FAIL face_enrollments: authenticated insert should have been denied';
+  exception when insufficient_privilege then
+    raise notice 'PASS face_enrollments: authenticated insert denied (service-role-only)';
+  end;
+  reset role;
+end $$;
+
+insert into public.login_face_challenges (user_id, expires_at) values
+  ('a0000000-0000-0000-0000-000000000002', now() + interval '2 minutes');
+
+do $$
+declare cnt int; claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000002') into claims; -- staff A, even the account it's about
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  select count(*) into cnt from public.login_face_challenges;
+  reset role;
+  perform app.verify_assert('login_face_challenges: no client-visible rows for anyone, not even the account owner', cnt::text, '0');
+end $$;
+
+do $$
+declare claims jsonb;
+begin
+  select app.verify_claims_for('a0000000-0000-0000-0000-000000000001') into claims; -- admin A
+  set local role authenticated;
+  perform set_config('request.jwt.claims', claims::text, true);
+  begin
+    insert into public.login_face_challenges (user_id, expires_at)
+      values ('a0000000-0000-0000-0000-000000000001', now() + interval '2 minutes');
+    raise exception 'FAIL login_face_challenges: authenticated insert should have been denied';
+  exception when insufficient_privilege then
+    raise notice 'PASS login_face_challenges: authenticated insert denied (service-role-only, no policies at all)';
+  end;
+  reset role;
+end $$;
+
+do $$ begin raise notice '=== ALL SECURITY PHASE 6 BIOMETRIC STEP-UP ASSERTIONS PASSED ==='; end $$;

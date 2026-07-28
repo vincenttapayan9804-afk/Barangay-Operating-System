@@ -21,10 +21,10 @@ evidence, not self-certify.
 | Database hardening & parameterized queries | ✅ Phase 3 — verified repo-wide: all 24 tables have both `enable` and `force row level security`; PostgREST/RPC-only access already parameterizes by construction; grants already minimal (explicit revokes for `document_requests`/`lookup_user_id_by_email`) | `backend/supabase/migrations`, `backend/supabase/verify/01_grants.sql` |
 | Fail-secure error handling | ✅ Phase 3 — only deliberately-thrown `HttpError`s reach the client; any other exception (fetch failure, DB error) becomes a fixed generic message, full detail still server-logged | `backend/supabase/functions/_shared/http.ts` |
 | Cryptographic log integrity | ✅ Phase 3 — SHA-256 hash-chained `activity_logs`/`finance_audit_logs` (`prev_hash`/`row_hash`, per-tenant), admin-only `verify_*_chain()` RPCs, tamper detection proven via a dedicated test | `backend/supabase/migrations/0030_audit_log_hash_chain.sql`, `backend/supabase/verify/02_seed_and_assertions.sql` |
-| Business logic & anti-automation | ✅ Phase 3 — Kong rate-limiting (`limit_by: ip`) on `/auth/v1/*` and write methods on `/rest/v1/*`/`/functions/v1/*`; Phase 6 (biometric step-up) still planned on top | `backend/supabase/kong.yml` |
+| Business logic & anti-automation | ✅ Phase 3 — Kong rate-limiting (`limit_by: ip`) on `/auth/v1/*` and write methods on `/rest/v1/*`/`/functions/v1/*`; ✅ Phase 6 — `login-gate` now proxies the password grant over that already-rate-limited `/functions/v1/*` route, plus a mandatory face-verification step-up after 3 failed attempts | `backend/supabase/kong.yml`, `backend/supabase/functions/login-gate` |
 | Secure file handling & uploads | ✅ Phase 3 — Cloudinary signed uploads (secret held server-side only, replacing the old unsigned upload_preset), client-side MIME/size allow-list | `backend/supabase/functions/sign-cloudinary-upload`, `frontend/src/api/upload.ts` |
 | RBAC enforced server-side | ✅ Already done — RLS, not app code | `backend/supabase/migrations/000*` |
-| MFA | ✅ Already done — TOTP (GoTrue) + WebAuthn | `backend/webauthn-service` |
+| MFA | ✅ Already done — TOTP (GoTrue) + WebAuthn; ✅ Phase 6 — CompreFace face-verification step-up after repeated failed logins, independent of role | `backend/webauthn-service`, `backend/compreface` |
 
 ## NIST Cybersecurity Framework (CSF) 2.0
 
@@ -32,7 +32,7 @@ evidence, not self-certify.
 |---|---|---|
 | **Govern** | ✅ Phase 1 (this doc + threat model formalize policy) | `docs/THREAT_MODEL.md` |
 | **Identify** | ✅ Data classification (Phase 1), asset inventory in threat model | `docs/DATA_CLASSIFICATION.md` |
-| **Protect** | ✅ RLS/RBAC/MFA/backups/rate-limiting/Phase 4 WAF/Phase 5 secrets management today; 🔜 Phase 6 closes the remaining gap | multiple |
+| **Protect** | ✅ RLS/RBAC/MFA/backups/rate-limiting/Phase 4 WAF/Phase 5 secrets management/Phase 6 biometric step-up today | multiple |
 | **Detect** | ✅ Phase 3 — hash-chained audit logs make tampering detectable, not just logged | `backend/supabase/migrations/0030_audit_log_hash_chain.sql` |
 | **Respond** | ✅ `docs/SECURITY.md` vulnerability-disclosure process | `docs/SECURITY.md` |
 | **Recover** | ✅ pgBackRest continuous backups | `docs/DEPLOYMENT.md` |

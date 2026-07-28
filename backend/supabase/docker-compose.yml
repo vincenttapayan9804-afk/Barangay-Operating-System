@@ -244,9 +244,24 @@ services:
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      # login-gate / enroll-face function secrets (Security Phase 6 —
+      # biometric step-up auth). Reaches the separate ../compreface stack
+      # (see that directory's own docker-compose.yml) over the shared
+      # compreface_net external network below, by CompreFace's own
+      # container name — not through Kong, since CompreFace is not part of
+      # this app's own API surface. No-op / login-gate fails closed on any
+      # step-up attempt (not on ordinary password logins) until
+      # COMPREFACE_API_KEY is set — see docs/DEPLOYMENT.md "Biometric
+      # Step-Up Authentication (CompreFace)".
+      COMPREFACE_URL: ${COMPREFACE_URL:-http://compreface-api:8080}
+      COMPREFACE_API_KEY: ${COMPREFACE_API_KEY:-}
+      COMPREFACE_SIMILARITY_THRESHOLD: ${COMPREFACE_SIMILARITY_THRESHOLD:-0.92}
     volumes:
       - ./functions:/home/deno/functions:ro
     command: ["start", "--main-service", "/home/deno/functions/main"]
+    networks:
+      - default
+      - compreface_net
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9000/_health"]
       interval: 10s
@@ -479,3 +494,15 @@ services:
 volumes:
   db_data:
   meili_data:
+
+networks:
+  default:
+    name: barangay-supabase_default
+  # Shared with ../compreface/docker-compose.yml (Security Phase 6) so
+  # edge-runtime can reach compreface-api by container name — create once
+  # with `docker network create compreface_net` before starting either
+  # stack. Every other service in this file stays on `default` only (no
+  # `networks:` key means "default" implicitly); edge-runtime alone needs
+  # both.
+  compreface_net:
+    external: true

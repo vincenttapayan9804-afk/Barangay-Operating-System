@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2, KeyRound } from 'lucide-react'
-import { login, requestNewMfaChallenge, completeMfaLogin } from './session'
+import { AlertCircle, Eye, EyeOff, User, ShieldCheck, Sparkles, UserPlus, Loader2, KeyRound, ScanFace } from 'lucide-react'
+import { login, requestNewMfaChallenge, completeMfaLogin, completeFaceLogin } from './session'
+import { FaceCapture } from '@/components/FaceCapture'
 import { ClustrMark } from '@/components/ClustrLogo'
 import { getClient } from '@/api/client'
 import { DEMO_ACCOUNTS, DEMO_BARANGAY_ID, enableDemoMode, isDemoModeEnabled, type DemoAccount } from '@/lib/demoAccounts'
@@ -35,6 +36,14 @@ export default function LoginPage() {
   const [factorId, setFactorId] = useState('')
   const [challengeId, setChallengeId] = useState('')
   const [otpCode, setOtpCode] = useState('')
+
+  // Face-verification step-up (Security Phase 6) — required whenever this
+  // account hit login-gate's 3-failed-attempt threshold on a previous try.
+  // Mutually exclusive with the TOTP step above: an account only ever hits
+  // one or the other on a given login (factorId is only ever set once
+  // faceChallengeId's step has already been cleared by a successful match).
+  const [faceChallengeId, setFaceChallengeId] = useState('')
+  const [faceSubmitting, setFaceSubmitting] = useState(false)
 
   // Temporary demo-mode access — runs entirely in this browser, no backend
   // required. See lib/demoAccounts.ts and api/mockPocketBase.ts.
@@ -112,6 +121,8 @@ export default function LoginPage() {
       if (result.mfaRequired) {
         setFactorId(result.factorId)
         setChallengeId(result.challengeId)
+      } else if (result.faceVerificationRequired) {
+        setFaceChallengeId(result.challengeId)
       } else {
         navigate('/dashboard')
       }
@@ -119,6 +130,25 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleFaceCapture(imageDataUrl: string) {
+    setError('')
+    setFaceSubmitting(true)
+    try {
+      const result = await completeFaceLogin(faceChallengeId, imageDataUrl)
+      if (result.mfaRequired) {
+        setFaceChallengeId('')
+        setFactorId(result.factorId)
+        setChallengeId(result.challengeId)
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not verify your face')
+    } finally {
+      setFaceSubmitting(false)
     }
   }
 
@@ -217,7 +247,23 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="mt-10">
-            {factorId ? (
+            {faceChallengeId ? (
+              <div className="mt-6 space-y-4">
+                <div className="flex items-start gap-2 rounded-xl border border-barangay/20 bg-barangay/5 px-4 py-3 font-display text-sm text-barangay">
+                  <ScanFace className="mt-0.5 size-4 shrink-0" />
+                  <span>Too many failed attempts on this account. Look at the camera to verify it&rsquo;s you before continuing.</span>
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-pinoy/20 bg-red-pinoy/5 px-4 py-3 font-display text-sm text-red-pinoy motion-scale-in">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <FaceCapture onCapture={handleFaceCapture} busy={faceSubmitting} captureLabel="Verify and sign in" />
+              </div>
+            ) : factorId ? (
               <form onSubmit={handleMfaSubmit} className="mt-6 space-y-4">
                 <div className="flex items-start gap-2 rounded-xl border border-barangay/20 bg-barangay/5 px-4 py-3 font-display text-sm text-barangay">
                   <ShieldCheck className="mt-0.5 size-4 shrink-0" />
@@ -361,7 +407,7 @@ export default function LoginPage() {
           </div>
 
           {/* Temporary demo access — no backend required */}
-          {!factorId && (
+          {!factorId && !faceChallengeId && (
             <div className="mt-8">
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200" />

@@ -2,6 +2,7 @@ import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { getClient, getMockUsersCollection } from '@/api/client'
 import { getSupabase } from '@/lib/supabaseClient'
 import { isDemoModeEnabled } from '@/lib/demoAccounts'
+import { attemptPasswordLogin, verifyFaceLogin } from '@/lib/loginGate'
 
 export type Role = 'admin' | 'staff' | 'viewer'
 
@@ -135,15 +136,33 @@ export interface MfaRequired {
   challengeId: string
 }
 
-export async function login(email: string, password: string): Promise<MfaRequired | { mfaRequired: false }> {
-  if (isDemoModeEnabled()) {
-    await getMockUsersCollection().authWithPassword(email, password)
-    return { mfaRequired: false }
-  }
+// Security Phase 6: an account that hit login-gate's 3-failed-attempt
+// threshold on a previous try must pass a CompreFace face match on this
+// login before a session is issued, even with the correct password —
+// signaled by login-gate's { faceVerificationRequired: true, challengeId }
+// response instead of tokens. LoginPage.tsx renders a camera-capture step
+// for this the same way it already does for the TOTP `MfaRequired` step.
+export interface FaceVerificationRequired {
+  mfaRequired: false
+  faceVerificationRequired: true
+  challengeId: string
+}
 
+export interface LoginSuccess {
+  mfaRequired: false
+  faceVerificationRequired: false
+}
+
+export type LoginOutcome = MfaRequired | FaceVerificationRequired | LoginSuccess
+
+// Adopts a freshly-issued session (from either login-gate's password step
+// or its face-verification step) and checks whether this account also
+// needs the existing TOTP aal2 step-up — unchanged from before Phase 6,
+// just factored out so both entry points share it.
+async function finishSessionAndCheckMfa(accessToken: string, refreshToken: string): Promise<LoginOutcome> {
   const supabase = getSupabase()
-  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-  if (signInError) throw signInError
+  const { error: setError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+  if (setError) throw setError
 
   const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
   if (aalError) throw aalError
@@ -160,7 +179,30 @@ export async function login(email: string, password: string): Promise<MfaRequire
     return { mfaRequired: true, factorId: totp.id, challengeId: challenge.id }
   }
 
-  return { mfaRequired: false }
+  return { mfaRequired: false, faceVerificationRequired: false }
+}
+
+export async function login(email: string, password: string): Promise<LoginOutcome> {
+  if (isDemoModeEnabled()) {
+    await getMockUsersCollection().authWithPassword(email, password)
+    return { mfaRequired: false, faceVerificationRequired: false }
+  }
+
+  // Proxies the password grant through login-gate (Security Phase 6)
+  // instead of calling supabase.auth.signInWithPassword() directly, so a
+  // failed attempt is counted server-side, authoritatively.
+  const result = await attemptPasswordLogin(email, password)
+  if (result.faceVerificationRequired) {
+    return { mfaRequired: false, faceVerificationRequired: true, challengeId: result.challengeId as string }
+  }
+
+  return finishSessionAndCheckMfa(result.access_token as string, result.refresh_token as string)
+}
+
+/** Completes the face-verification step-up challenge from login()'s FaceVerificationRequired outcome. */
+export async function completeFaceLogin(challengeId: string, imageDataUrl: string): Promise<LoginOutcome> {
+  const result = await verifyFaceLogin(challengeId, imageDataUrl)
+  return finishSessionAndCheckMfa(result.access_token as string, result.refresh_token as string)
 }
 
 /** Issues a fresh challenge for the same factor — used for a "my code expired" retry, not a resend (no code is emailed; TOTP codes come from the user's own authenticator app). */

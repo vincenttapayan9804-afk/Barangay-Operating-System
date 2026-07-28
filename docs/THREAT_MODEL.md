@@ -15,6 +15,7 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | Service secrets (JWT signing key, service-role key, DB password) | Self-hosted Infisical (`backend/infisical/`), rendered into `backend/supabase/.env` at deploy time (Phase 5) | Critical |
 | Audit trail (`activity_logs`, `finance_audit_logs`) | Postgres | High — must be tamper-evident (Phase 3) |
 | Released documents (clearances, certificates) | Generated PDFs + `document_requests` | Medium — forgeable if verification is weak (Phase 7) |
+| Face templates (biometric data) | CompreFace's own store only (`backend/compreface/`), keyed by subject = user id; never this Postgres database | Critical — biometric data is irrevocable if leaked, unlike a password |
 
 ## Trust boundaries
 
@@ -29,12 +30,16 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
    RLS entirely; this key must never reach the frontend (`docs/SECURITY.md` already calls this out).
 6. **Tenant ↔ tenant** — one shared Postgres database; the only isolation boundary is RLS's
    `barangay_id = app.current_barangay_id()` check on every tenant-scoped table.
+7. **edge-runtime ↔ CompreFace** (Phase 6) — a new external network hop (`compreface_net`) added
+   specifically for `login-gate`/`enroll-face`; CompreFace is a new trusted component with its own
+   attack surface (`backend/compreface/docker-compose.yml`), loopback-only admin UI, reached only
+   by container name, never through Kong or the public WAF ingress.
 
 ## STRIDE pass
 
 | Category | Threat | Existing mitigation | Gap addressed by this roadmap |
 |---|---|---|---|
-| **S**poofing | Credential stuffing / brute force against login | GoTrue rate-limit env vars, nginx `auth_limit` zone | Phase 3 (Kong-level rate limiting), Phase 6 (face-verification step-up after 3 failed attempts) |
+| **S**poofing | Credential stuffing / brute force against login | GoTrue rate-limit env vars, nginx `auth_limit` zone, Kong-level rate limiting (Phase 3) | Closed — Phase 6's `login-gate` Edge Function proxies the password grant server-side to count failures authoritatively, and requires a CompreFace face match on the next login once an account hits 3 failures, regardless of whether the password given is correct |
 | **S**poofing | Forged/reused document certificates | QR code + `/verify/:id` lookup | Phase 7 (hash-chained tamper-evidence) |
 | **T**ampering | Historical audit-log rows edited directly in Postgres (e.g. by a compromised service-role key) | RLS denies UPDATE/DELETE on `activity_logs`/`finance_audit_logs` | Phase 3 (hash-chain makes tampering *detectable*, not just policy-denied) |
 | **T**ampering | Unsigned Cloudinary upload preset lets anyone upload arbitrary files under the app's account | None today | Phase 3 (signed uploads or Supabase Storage + bucket RLS) |
@@ -45,7 +50,8 @@ or asset is introduced (e.g. the Security Roadmap phases tracked in this repo's 
 | **D**enial of service | Scripted abuse of write-heavy endpoints (mass record creation, finance entry spam) | None at Kong today | Phase 3 (Kong rate-limiting / anti-automation) |
 | **D**enial of service | Generic web attacks (SQLi/XSS scanners, known exploit signatures) | Cloudflare's free-tier WAF, plus Phase 4's self-hosted Coraza/OWASP CRS layer in front of nginx/Kong (`docs/SECURITY.md` "Network Security") | Closed |
 | **E**levation of privilege | A viewer/staff account attempting an admin-only action via direct API call | Server-side RLS on every table, `force row level security` set repo-wide | Phase 3 verifies this repo-wide as part of the DB hardening pass |
-| **E**levation of privilege | Compromised low-privilege account escalating via a stolen session | MFA required for admin/staff-with-flag, WebAuthn available | Phase 6 (mandatory face step-up once an account shows signs of a brute-force attempt, regardless of role) |
+| **E**levation of privilege | Compromised low-privilege account escalating via a stolen session | MFA required for admin/staff-with-flag, WebAuthn available | Closed — Phase 6's face step-up applies to every role (staff/admin/viewer), not just MFA-required roles, once an account shows signs of a brute-force attempt |
+| **E**levation of privilege | An account with no face template enrolled reaches the 3-failed-attempt threshold, and login-gate can't ask for a second factor it has nothing to check against | N/A (new surface, Phase 6) | Closed — fails closed: the account is soft-locked (423, admin-unlock required — see Settings' "Locked Accounts" panel) rather than silently skipping the face check |
 
 ## Out of scope for this document
 

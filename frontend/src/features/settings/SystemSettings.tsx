@@ -10,6 +10,8 @@ import { toast as showToast } from '@/lib/toast'
 import { useTranslation } from '@/lib/i18n'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { PasskeySettings } from './PasskeySettings'
+import { FaceEnrollmentSettings } from './FaceEnrollmentSettings'
+import { AccountLockoutsSettings } from './AccountLockoutsSettings'
 
 interface TagInputProps {
   items: string[]
@@ -510,6 +512,8 @@ export default function SystemSettings() {
         </section>
 
         <PasskeySettings />
+        <FaceEnrollmentSettings />
+        <AccountLockoutsSettings />
       </div>
 
       {toast && (

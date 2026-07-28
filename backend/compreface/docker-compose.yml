@@ -1,0 +1,165 @@
+# Self-hosted CompreFace (Security Phase 6 — biometric step-up
+# authentication) — the free, OSS face-recognition service backing the
+# face-verification challenge in backend/supabase/functions/login-gate and
+# enroll-face. A separate compose project from backend/supabase/ on
+# purpose, same rationale as backend/infisical/: CompreFace has its own
+# Postgres and its own bootstrapping order (an Application + a Recognition
+# Service + that service's own API key must exist, via the admin UI, before
+# COMPREFACE_API_KEY below has a real value to put in
+# backend/supabase/.env), so it stands alone rather than living inside the
+# app stack's own compose file.
+#
+# Adapted from CompreFace's own reference deployment
+# (https://github.com/exadel-inc/CompreFace/blob/master/docker-compose.yml)
+# with per-service healthchecks added, matching every other compose file in
+# this repo (see backend/supabase/docker-compose.yml's own comment) — a gap
+# the upstream file doesn't cover. Image tags and service env vars are
+# believed correct as of this writing but have NOT been exercised against a
+# running Docker daemon in this environment (same constraint as every prior
+# infra phase — see backend/supabase/PHASE6_NOTES.md); diff this file
+# against the current upstream compose before a first real deploy.
+#
+# Run on any machine with a working Docker daemon:
+#   docker network create compreface_net   # shared with backend/supabase's edge-runtime
+#   cd backend/compreface
+#   cp .env.example .env   # fill in POSTGRES_PASSWORD, ADMIN_JAVA_OPTS secret, etc.
+#   docker compose up -d
+#   # Then, one-time, via the UI at http://localhost:8010: create an
+#   # account, an Application, and a "Recognition" service inside it — copy
+#   # that service's own API key into backend/supabase/.env's
+#   # COMPREFACE_API_KEY (see docs/DEPLOYMENT.md "Biometric Step-Up
+#   # Authentication (CompreFace)").
+
+name: barangay-compreface
+
+services:
+  compreface-postgres-db:
+    image: postgres:14-alpine
+    container_name: barangay-compreface-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-compreface}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-frs}
+    volumes:
+      - compreface_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-compreface}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ML core — face detection, calculation, and recognition models. Called
+  # internally by compreface-api, never reached directly by our edge
+  # functions.
+  compreface-core:
+    image: exadel/compreface-core:1.2.0
+    container_name: barangay-compreface-core
+    restart: unless-stopped
+    environment:
+      ML_PORT: 3000
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Admin/management API backing the Angular UI (applications, services,
+  # API keys, user management) — only ever used interactively via the UI
+  # below during setup, never called by login-gate/enroll-face at runtime.
+  compreface-admin:
+    image: exadel/compreface-admin:1.2.0
+    container_name: barangay-compreface-admin
+    restart: unless-stopped
+    depends_on:
+      compreface-postgres-db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-compreface}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-frs}
+      postgres.host.port: compreface-postgres-db:5432
+      postgres.url: jdbc:postgresql://compreface-postgres-db:5432/${POSTGRES_DB:-frs}
+      spring.datasource.url: jdbc:postgresql://compreface-postgres-db:5432/${POSTGRES_DB:-frs}
+      spring.datasource.password: ${POSTGRES_PASSWORD}
+      spring.datasource.username: ${POSTGRES_USER:-compreface}
+      admin.security.secret: ${ADMIN_SECRET}
+      ml.core.address: http://compreface-core:3000
+      enable.email.server: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/manage/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # The actual Recognition Service REST API — everything login-gate/
+  # enroll-face call (POST /api/v1/recognition/faces, POST
+  # /api/v1/recognition/recognize, DELETE /api/v1/recognition/faces),
+  # authenticated with the Recognition Service's own API key
+  # (COMPREFACE_API_KEY), not the admin API key above.
+  compreface-api:
+    image: exadel/compreface-api:1.2.0
+    container_name: barangay-compreface-api
+    restart: unless-stopped
+    depends_on:
+      compreface-postgres-db:
+        condition: service_healthy
+      compreface-core:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-compreface}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-frs}
+      spring.datasource.url: jdbc:postgresql://compreface-postgres-db:5432/${POSTGRES_DB:-frs}
+      spring.datasource.password: ${POSTGRES_PASSWORD}
+      spring.datasource.username: ${POSTGRES_USER:-compreface}
+      ml.core.address: http://compreface-core:3000
+      # Similarity threshold live face-matches must clear by default;
+      # login-gate/enroll-face pass their own explicit threshold per call
+      # (COMPREFACE_SIMILARITY_THRESHOLD, see backend/supabase/.env.example)
+      # but this is CompreFace's own service-level floor.
+      save.images.to.db: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/static/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - default
+      - compreface_net
+
+  # Angular admin UI + nginx gateway — loopback-only (127.0.0.1:8010) same
+  # rationale as Infisical's own UI: this is where the Recognition Service's
+  # API key is minted, so it must sit behind a tunnel/VPN, never the public
+  # WAF ingress the app itself uses.
+  compreface-fe:
+    image: exadel/compreface-fe:1.2.0
+    container_name: barangay-compreface-fe
+    restart: unless-stopped
+    depends_on:
+      compreface-admin:
+        condition: service_healthy
+      compreface-api:
+        condition: service_healthy
+    environment:
+      NGINX_MAX_BODY: 5M
+    ports:
+      - "127.0.0.1:8010:80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  compreface_db_data:
+
+networks:
+  default:
+    name: barangay-compreface_default
+  # Shared with backend/supabase/docker-compose.yml's edge-runtime service
+  # so login-gate/enroll-face can reach compreface-api by container name —
+  # create once with `docker network create compreface_net` before starting
+  # either stack.
+  compreface_net:
+    external: true
