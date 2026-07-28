@@ -1240,33 +1240,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Open standards & compliance badges ── */}
-      <section id="badges" className="border-b border-border bg-paper">
-        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-8">
-          <Reveal className="mx-auto max-w-2xl text-center">
-            <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
-              Open Standards &amp; Compliance Badges
-            </p>
-            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              Every Claim Labeled, Nothing Overstated
-            </h2>
-            <p className="mt-4 font-display text-base text-muted-foreground">
-              A solid pill marks something already shipped and verifiable in this repo. A dashed
-              outline marks a self-assessment or a roadmap item — hover or tap any badge for the
-              honest detail behind it.
-            </p>
-          </Reveal>
-
-          <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            {ossBadges.map((item, i) => (
-              <Reveal key={item.title} delay={(i % 5) * 0.05}>
-                <OssBadgeCard item={item} />
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── About ── */}
       <section id="about" className="mx-auto max-w-7xl px-5 py-24 sm:px-8">
         <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-2">
@@ -1390,7 +1363,8 @@ export default function LandingPage() {
                 Resident data deserves the same rigor as any government system. CLUSTR enforces
                 access control at the server, logs every material action, and ships with the
                 documentation your office needs to operate responsibly under Philippine data
-                privacy law.
+                privacy law — backed by the open standards and compliance badges below, each one
+                labeled honestly rather than overstated.
               </p>
               <ul className="mt-8 space-y-4">
                 {[
@@ -1450,6 +1424,30 @@ export default function LandingPage() {
                 </div>
               </div>
             </Reveal>
+          </div>
+
+          <div className="mt-20 border-t border-border pt-16">
+            <Reveal className="mx-auto max-w-2xl text-center">
+              <p className="font-display text-xs font-semibold uppercase tracking-[0.15em] text-mint-deep">
+                Open Standards &amp; Compliance Badges
+              </p>
+              <h3 className="mt-3 font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                Every Claim Labeled, Nothing Overstated
+              </h3>
+              <p className="mt-4 font-display text-base text-muted-foreground">
+                A solid pill marks something already shipped and verifiable in this repo. A dashed
+                outline marks a self-assessment or a roadmap item — hover or tap any badge for the
+                honest detail behind it.
+              </p>
+            </Reveal>
+
+            <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+              {ossBadges.map((item, i) => (
+                <Reveal key={item.title} delay={(i % 5) * 0.05}>
+                  <OssBadgeCard item={item} />
+                </Reveal>
+              ))}
+            </div>
           </div>
         </div>
       </section>
