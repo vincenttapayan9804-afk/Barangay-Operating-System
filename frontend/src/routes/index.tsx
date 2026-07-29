@@ -42,6 +42,7 @@ const RevenueTracking = lazy(() => import('@/features/finance/RevenueTracking').
 const FundSources = lazy(() => import('@/features/finance/FundSources').then((m) => ({ default: m.FundSources })))
 const Disbursements = lazy(() => import('@/features/finance/Disbursements').then((m) => ({ default: m.Disbursements })))
 const FinanceAudit = lazy(() => import('@/features/finance/FinanceAudit').then((m) => ({ default: m.FinanceAudit })))
+const GovernmentFormsPage = lazy(() => import('@/features/government-forms/GovernmentFormsPage'))
 
 export default function AppRoutes() {
   return (
@@ -216,6 +217,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute roles={['admin', 'staff']}>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="government-forms"
+          element={
+            <ProtectedRoute roles={['admin', 'staff']}>
+              <GovernmentFormsPage />
             </ProtectedRoute>
           }
         />

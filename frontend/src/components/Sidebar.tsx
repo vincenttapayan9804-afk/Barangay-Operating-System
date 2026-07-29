@@ -24,6 +24,7 @@ import {
   ScrollText,
   Download,
   Building2,
+  Stamp,
 } from 'lucide-react'
 import { getCurrentUser, logout, type Role } from '@/auth/session'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -75,6 +76,12 @@ const navGroups: { labelKey: TranslationKey; items: NavItem[] }[] = [
       { to: '/finance/funds', labelKey: 'nav.item.fundSources', icon: Wallet, roles: ['admin', 'staff'] },
       { to: '/finance/disbursements', labelKey: 'nav.item.disbursements', icon: ArrowUpFromLine, roles: ['admin', 'staff'] },
       { to: '/finance/audit', labelKey: 'nav.item.financeAudit', icon: ScrollText, roles: ['admin', 'staff'] },
+    ],
+  },
+  {
+    labelKey: 'nav.group.governmentForms',
+    items: [
+      { to: '/government-forms', labelKey: 'nav.item.governmentForms', icon: Stamp, roles: ['admin', 'staff'] },
     ],
   },
   {
